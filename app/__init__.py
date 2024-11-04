@@ -1,0 +1,47 @@
+#__init__.py
+import atexit
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from flask_restful import Api
+from flask_login import LoginManager
+from flask_cors import CORS
+from flask_bcrypt import Bcrypt
+from flask_jwt_extended import JWTManager
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime, timedelta
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://xavier:1234@localhost/contabilidad_personal'
+app.config['SECRET_KEY'] = 'your_secret_key'
+app.config['JWT_SECRET_KEY'] = 'your_jwt_secret_key'
+db = SQLAlchemy(app)
+api = Api(app)
+login_manager = LoginManager(app)
+bcrypt = Bcrypt(app)
+jwt = JWTManager(app)
+CORS(app)  # Habilitar CORS para todas las rutas
+
+from app import routes
+from app.models import PagoRecurrente  # Importar el modelo PagoRecurrente
+
+def reset_pagos_recurrentes():
+    with app.app_context():
+        pagos_recurrentes = PagoRecurrente.query.all()
+        for pago in pagos_recurrentes:
+            pago.pagado = False
+        db.session.commit()
+        app.logger.info("Pagos recurrentes restablecidos")
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(
+    func=reset_pagos_recurrentes,
+    trigger='cron',
+    day='last',
+    hour=23,
+    minute=59,
+    second=59
+)
+scheduler.start()
+
+# Shut down the scheduler when exiting the app
+atexit.register(lambda: scheduler.shutdown())

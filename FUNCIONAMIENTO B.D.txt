@@ -1,0 +1,12 @@
+Registro de Usuario:
+
+Cuando un usuario se registra, se crea un nuevo registro en la tabla user con un id único.
+Autenticación de Usuario:
+
+Cuando un usuario inicia sesión, se genera un token JWT que incluye la identidad del usuario (su username).
+Asociación de Datos:
+
+Cada vez que se crea un ingreso, otro ingreso o egreso, se asocia el user_id del usuario autenticado a ese registro.
+Las consultas a las tablas ingreso, otro_ingreso y egreso filtran los datos por user_id, asegurando que cada usuario solo vea sus propios datos.
+
+
