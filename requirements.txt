@@ -17,3 +17,4 @@ typing_extensions==4.12.2
 Werkzeug==3.0.6
 zipp==3.20.2
 flask_sqlalchemy==3.0.4
+flask_cors==3.0.10  
