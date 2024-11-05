@@ -18,4 +18,5 @@ Werkzeug==3.0.6
 zipp==3.20.2
 flask_sqlalchemy==3.0.4
 flask_cors==3.0.10
-flask_bcrypt==1.0.1  # Añadir esta línea
+flask_bcrypt==1.0.1
+flask_jwt_extended==4.4.4
