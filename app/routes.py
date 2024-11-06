@@ -14,14 +14,14 @@ class IngresoResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user['username']).first()
+        user = User.query.filter_by(username=current_user).first()
         ingresos = IngresoController.get_all_ingresos(user.id)
         return jsonify([ingreso.to_dict() for ingreso in ingresos])
 
     @jwt_required()
     def post(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user['username']).first()
+        user = User.query.filter_by(username=current_user).first()
         data = request.get_json()
         if data['fuente'] == 'Ingresos Extras':
             nuevo_otro_ingreso = OtroIngresoController.create_otro_ingreso(data['fuente'], data['fecha'], data['monto'], user.id, data.get('descripcion', ''))
@@ -36,14 +36,14 @@ class OtroIngresoResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user['username']).first()
+        user = User.query.filter_by(username=current_user).first()
         otros_ingresos = OtroIngresoController.get_all_otros_ingresos(user.id)
         return jsonify([otro_ingreso.to_dict() for otro_ingreso in otros_ingresos])
 
     @jwt_required()
     def post(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user['username']).first()
+        user = User.query.filter_by(username=current_user).first()
         data = request.get_json()
         nuevo_otro_ingreso = OtroIngresoController.create_otro_ingreso(
             fuente=data['fuente'],
@@ -60,14 +60,14 @@ class EgresoResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user['username']).first()
+        user = User.query.filter_by(username=current_user).first()
         egresos = EgresoController.get_all_egresos(user.id)
         return jsonify([egreso.to_dict() for egreso in egresos])
 
     @jwt_required()
     def post(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user['username']).first()
+        user = User.query.filter_by(username=current_user).first()
         data = request.get_json()
         nuevo_egreso = EgresoController.create_egreso(data['categoria'], data['subcategoria'], data['monto'], data['fecha'], user.id, data.get('recurrente', False))
         return jsonify(nuevo_egreso.to_dict())
@@ -78,7 +78,7 @@ class TotalResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user['username']).first()
+        user = User.query.filter_by(username=current_user).first()
         
         year = request.args.get('year')
         month = request.args.get('month')
@@ -158,14 +158,14 @@ class PagoRecurrenteResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user['username']).first()
+        user = User.query.filter_by(username=current_user).first()
         pagos_recurrentes = PagoRecurrenteController.get_pagos_recurrentes(user.id)
         return jsonify(pagos_recurrentes)
 
     @jwt_required()
     def post(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user['username']).first()
+        user = User.query.filter_by(username=current_user).first()
         data = request.get_json()
         categorias = data.get('categorias', [])
         PagoRecurrenteController.delete_pagos_recurrentes(user.id)

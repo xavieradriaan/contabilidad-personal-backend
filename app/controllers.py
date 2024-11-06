@@ -1,4 +1,3 @@
-#controllers.py
 from app import db
 from app.models import Ingreso, OtroIngreso, Egreso, PagoRecurrente
 
