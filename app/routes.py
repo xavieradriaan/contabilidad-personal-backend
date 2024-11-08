@@ -138,7 +138,7 @@ class LoginResource(Resource):
         if user and bcrypt.check_password_hash(user.password, data['password']):
             user.failed_attempts = 0  # Reset failed attempts on successful login
             db.session.commit()
-            access_token = create_access_token(identity={'username': user.username})
+            access_token = create_access_token(identity=user.username)
             return jsonify(access_token=access_token)
         else:
             user.failed_attempts += 1
