@@ -6,13 +6,17 @@ git checkout dev
 ----PARA UNIR LO DE PRE A DEV------
 git branch
 git checkout dev
-git checkout merge pre
+git checkout merge git pre
 git branch
 SI NO HAY PROBLEMAS
 git add 
 git commit -m "..."
 git push origin dev
 
+
+
+------__init__.py    EN LOCAL-----
+#__init__.py
 import atexit
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -43,7 +47,7 @@ from app.models import PagoRecurrente  # Importar el modelo PagoRecurrente
 def reset_pagos_recurrentes():
     with app.app_context():
         pagos_recurrentes = PagoRecurrente.query.all()
-        for pago en pagos_recurrentes:
+        for pago in pagos_recurrentes:
             pago.pagado = False
         db.session.commit()
         app.logger.info("Pagos recurrentes restablecidos")
@@ -64,7 +68,7 @@ atexit.register(lambda: scheduler.shutdown())
 
 
 
--------------PARA DESPLEGAR: de Dev a Pre------------------
+-------------PARA UNIR Y LUEGO DESPLEGAR: de Dev a Pre------------------
 git checkout pre
 git merge dev
 si no hay conflictos
@@ -72,6 +76,9 @@ git add .
 git commit -m "..."
 git push origin pre
 
+
+
+------__init__.py para desplegar----
 #__init__.py
 import atexit
 from flask import Flask
