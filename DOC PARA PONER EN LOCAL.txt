@@ -15,7 +15,7 @@ git push origin dev
 
 
 
-------__init__.py
+------__init__.py PARA LOCAL---------
 #__init__.py
 import atexit
 from flask import Flask
