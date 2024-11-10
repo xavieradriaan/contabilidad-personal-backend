@@ -1,3 +1,18 @@
+-------- PARA PONER EN LOCAL-----
+git branch
+git checkout dev
+
+
+----PARA UNIR LO DE PRE A DEV------
+git branch
+git checkout dev
+git checkout merge pre
+git branch
+SI NO HAY PROBLEMAS
+git add 
+git commit -m "..."
+git push origin dev
+
 import atexit
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -49,8 +64,13 @@ atexit.register(lambda: scheduler.shutdown())
 
 
 
------------------------------------------
-DOC PARA DESPLEGAR:
+-------------PARA DESPLEGAR: de Dev a Pre------------------
+git checkout pre
+git merge dev
+si no hay conflictos
+git add .
+git commit -m "..."
+git push origin pre
 
 #__init__.py
 import atexit
