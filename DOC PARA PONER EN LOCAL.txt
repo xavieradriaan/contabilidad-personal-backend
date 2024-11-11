@@ -69,6 +69,7 @@ atexit.register(lambda: scheduler.shutdown())
 
 
 -------------PARA UNIR Y LUEGO DESPLEGAR: de Dev a Pre------------------
+git branch
 git checkout pre
 git merge dev
 si no hay conflictos
