@@ -13,10 +13,6 @@ git add
 git commit -m "..."
 git push origin dev
 
-
-
-------__init__.py    EN LOCAL-----
-#__init__.py
 import atexit
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -68,7 +64,7 @@ atexit.register(lambda: scheduler.shutdown())
 
 
 
--------------PARA UNIR Y LUEGO DESPLEGAR: de Dev a Pre------------------
+-------------PARA DESPLEGAR: de Dev a Pre------------------
 git checkout pre
 git merge dev
 si no hay conflictos

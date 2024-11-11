@@ -113,11 +113,18 @@ api.add_resource(TotalResource, '/total')
 class RegisterResource(Resource):
     def post(self):
         data = request.get_json()
-        user = User.query.filter_by(username=data['username']).first()
+        username = data['username']
+        password = data['password']
+
+        if ' ' in username or ' ' in password:
+            return make_response(jsonify({"message": "El nombre de usuario y la contraseña no deben contener espacios."}), 400)
+
+        user = User.query.filter_by(username=username).first()
         if user:
             return make_response(jsonify({"message": "El nombre de usuario ya existe o está en uso. Por favor use otro Nombre de Usuario"}), 400)
-        hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-        new_user = User(username=data['username'], password=hashed_password)
+        
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+        new_user = User(username=username, password=hashed_password)
         db.session.add(new_user)
         db.session.commit()
         
