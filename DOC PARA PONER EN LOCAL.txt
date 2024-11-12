@@ -123,3 +123,12 @@ scheduler.start()
 
 # Shut down the scheduler when exiting the app
 atexit.register(lambda: scheduler.shutdown())
+
+
+
+
+MIGRAR B.D:
+
+rm -rf migrations
+flask db init
+flask db migrate -m "Add descripcion to Ingreso"
