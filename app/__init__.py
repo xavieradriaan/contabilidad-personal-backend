@@ -1,5 +1,4 @@
 #__init__.py
-#__init__.py
 import atexit
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
