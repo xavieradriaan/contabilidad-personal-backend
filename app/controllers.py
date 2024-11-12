@@ -13,8 +13,8 @@ class IngresoController:
         return Ingreso.query.get(ingreso_id)
 
     @staticmethod
-    def create_ingreso(fuente, fecha, monto, user_id):
-        nuevo_ingreso = Ingreso(fuente=fuente, fecha=fecha, monto=monto, user_id=user_id)
+    def create_ingreso(fuente, fecha, monto, user_id, descripcion=''):
+        nuevo_ingreso = Ingreso(fuente=fuente, fecha=fecha, monto=monto, user_id=user_id, descripcion=descripcion)
         db.session.add(nuevo_ingreso)
         db.session.commit()
         return nuevo_ingreso

@@ -21,6 +21,7 @@ class Ingreso(db.Model):
     fecha = db.Column(db.Date, nullable=False)
     monto = db.Column(db.Numeric, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    descripcion = db.Column(db.String(100), nullable=True)
     user = db.relationship('User', backref=db.backref('ingresos', lazy=True))
 
     def to_dict(self):
@@ -29,6 +30,7 @@ class Ingreso(db.Model):
             'fuente': self.fuente,
             'fecha': self.fecha.isoformat(),
             'monto': str(self.monto),
+            'descripcion': self.descripcion,
             'user_id': self.user_id
         }
 

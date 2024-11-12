@@ -24,11 +24,17 @@ class IngresoResource(Resource):
         current_user = get_jwt_identity()
         user = User.query.filter_by(username=current_user).first()
         data = request.get_json()
+        descripcion = data.get('descripcion', '')
+        
         if data['fuente'] == 'Ingresos Extras':
-            nuevo_otro_ingreso = OtroIngresoController.create_otro_ingreso(data['fuente'], data['fecha'], data['monto'], user.id, data.get('descripcion', ''))
+            nuevo_otro_ingreso = OtroIngresoController.create_otro_ingreso(data['fuente'], data['fecha'], data['monto'], user.id, descripcion)
             return jsonify(nuevo_otro_ingreso.to_dict())
         else:
-            nuevo_ingreso = IngresoController.create_ingreso(data['fuente'], data['fecha'], data['monto'], user.id)
+            if data['fuente'] == 'Ingresar Salario (Quincena)':
+                descripcion = 'Quincena'
+            elif data['fuente'] == 'Ingresar Salario (Fin de Mes)':
+                descripcion = 'Fin de Mes'
+            nuevo_ingreso = IngresoController.create_ingreso(data['fuente'], data['fecha'], data['monto'], user.id, descripcion)
             return jsonify(nuevo_ingreso.to_dict())
 
 api.add_resource(IngresoResource, '/ingresos')

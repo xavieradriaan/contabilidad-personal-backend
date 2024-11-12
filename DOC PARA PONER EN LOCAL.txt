@@ -11,9 +11,6 @@ git add .
 git commit -m "Resuelve conflictos del merge"
 git push origin dev
 
-
-
-------- PARA CORRER EN LOCAL-------
 import atexit
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -69,17 +66,14 @@ atexit.register(lambda: scheduler.shutdown())
 
 
 
--------------PARA DESPLEGAR: de Dev a Pre------------------
+-------------PARA UNIR Y LUEGO DESPLEGAR: de Dev a Pre------------------
+git branch
 git checkout pre
 git merge dev
 git add .
 git commit -m "Resuelve conflictos del merge"
 git push origin pre
 
-
-
-
-------__init__.py para desplegar----
 #__init__.py
 import atexit
 from flask import Flask
