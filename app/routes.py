@@ -11,6 +11,18 @@ from flask_jwt_extended import create_access_token
 def index():
     return "Bienvenido a la API de Contabilidad Personal"
 
+@app.route('/check_username', methods=['GET'])
+def check_username():
+    username = request.args.get('username')
+    if not username:
+        return jsonify({'available': False, 'message': 'Username is required'}), 400
+
+    user = User.query.filter_by(username=username).first()
+    if user:
+        return jsonify({'available': False, 'message': 'El nombre de usuario ya está en uso'}), 200
+    else:
+        return jsonify({'available': True, 'message': 'El nombre de usuario está disponible'}), 200
+
 class IngresoResource(Resource):
     @jwt_required()
     def get(self):
@@ -76,7 +88,15 @@ class EgresoResource(Resource):
         current_user = get_jwt_identity()
         user = User.query.filter_by(username=current_user).first()
         data = request.get_json()
-        nuevo_egreso = EgresoController.create_egreso(data['categoria'], data['subcategoria'], data['monto'], data['fecha'], user.id, data.get('recurrente', False))
+        nuevo_egreso = EgresoController.create_egreso(
+            categoria=data['categoria'],
+            subcategoria=data.get('subcategoria', ''),
+            monto=data['monto'],
+            fecha=data['fecha'],
+            user_id=user.id,
+            bancos=data.get('bancos', None),  # Pasar el banco al controlador
+            recurrente=data.get('recurrente', False)
+        )
         return jsonify(nuevo_egreso.to_dict())
 
 api.add_resource(EgresoResource, '/egresos')
@@ -182,9 +202,42 @@ class PagoRecurrenteResource(Resource):
         user = User.query.filter_by(username=current_user).first()
         data = request.get_json()
         categorias = data.get('categorias', [])
-        PagoRecurrenteController.delete_pagos_recurrentes(user.id)
-        for categoria in categorias:
-            PagoRecurrenteController.add_pago_recurrente(user.id, categoria)
+        PagoRecurrenteController.save_pagos_recurrentes(user.id, categorias)
         return jsonify({"message": "Pagos recurrentes actualizados"})
 
 api.add_resource(PagoRecurrenteResource, '/pagos_recurrentes')
+
+class DepositosBancosResource(Resource):
+    @jwt_required()
+    def get(self):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(username=current_user).first()
+        
+        year = request.args.get('year')
+        month = request.args.get('month')
+        
+        if year and month:
+            egresos = Egreso.query.filter_by(user_id=user.id).filter(db.extract('year', Egreso.fecha) == year, db.extract('month', Egreso.fecha) == month).all()
+        else:
+            egresos = Egreso.query.filter_by(user_id=user.id).all()
+        
+        depositos_por_banco = {}
+        total_depositos = 0
+
+        for egreso in egresos:
+            if egreso.bancos:
+                if egreso.bancos not in depositos_por_banco:
+                    depositos_por_banco[egreso.bancos] = []
+                depositos_por_banco[egreso.bancos].append({
+                    'fecha': egreso.fecha.isoformat(),
+                    'categoria': egreso.categoria,
+                    'monto': float(egreso.monto)
+                })
+                total_depositos += float(egreso.monto)
+
+        return jsonify({
+            "depositosPorBanco": depositos_por_banco,
+            "totalDepositos": total_depositos
+        })
+
+api.add_resource(DepositosBancosResource, '/depositos_bancos')

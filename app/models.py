@@ -61,6 +61,7 @@ class Egreso(db.Model):
     fecha = db.Column(db.Date, nullable=False)
     recurrente = db.Column(db.Boolean, default=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    bancos = db.Column(db.String(255), nullable=True)  # Nueva columna
     user = db.relationship('User', backref=db.backref('egresos', lazy=True))
 
     def to_dict(self):
@@ -71,7 +72,8 @@ class Egreso(db.Model):
             'monto': str(self.monto),
             'fecha': self.fecha.isoformat(),
             'recurrente': self.recurrente,
-            'user_id': self.user_id
+            'user_id': self.user_id,
+            'bancos': self.bancos  # Incluir la nueva columna en el diccionario
         }
 
 class PagoRecurrente(db.Model):
