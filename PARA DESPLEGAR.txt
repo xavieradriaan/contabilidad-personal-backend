@@ -74,7 +74,7 @@ TODO DEBO ESTAR EN EL ENVIORNMENT DE (VENV)
 rm -rf migrations
 flask db init
 flask db migrate -m "Add descripcion to Ingreso"
-
+LUEGO EN RAILWAY EN LA B.D ACTUALIZAR LA B.D
 
 ---- AHORA SÍ PASOS ----
 git add .
