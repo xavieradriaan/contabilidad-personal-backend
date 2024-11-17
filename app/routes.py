@@ -6,10 +6,166 @@ from app.controllers import IngresoController, OtroIngresoController, EgresoCont
 from app import app, db, api, bcrypt
 from app.models import User, Ingreso, OtroIngreso, Egreso, PagoRecurrente
 from flask_jwt_extended import create_access_token
+from mailjet_rest import Client
+import random
+import os
+from datetime import datetime, timedelta
+
+# Configurar la clave API de Mailjet
+MAILJET_API_KEY = "ba07f36f2dd4c3aa5a89811f3ca3a54e"
+MAILJET_API_SECRET = "6aa94d9f4a1f095e0a2e02f29a7bf935"
+
+mailjet = Client(auth=(MAILJET_API_KEY, MAILJET_API_SECRET), version='v3.1')
+
+def send_otp(email, username):
+    otp = random.randint(100000, 999999)
+    data = {
+        'Messages': [
+            {
+                "From": {
+                    "Email": "contabilizateapp@hotmail.com",  # Asegúrate de que esta dirección esté verificada en Mailjet
+                    "Name": "Contabilízate App"
+                },
+                "To": [
+                    {
+                        "Email": email,
+                        "Name": username
+                    }
+                ],
+                "Subject": "Código de Confirmación",
+                "HTMLPart": f"""
+                <p>Hola {username},</p>
+                <p>Bienvenido a la aplicación de Contabilízate App, tu aplicación para llevar tu contabilidad personal.</p>
+                <p>Tu código de confirmación es: <strong>{otp}</strong></p>
+                """
+            }
+        ]
+    }
+    result = mailjet.send.create(data=data)
+    if result.status_code != 200:
+        app.logger.error(f"Error sending email: {result.json()}")
+        raise Exception("Error sending email")
+    return otp
 
 @app.route('/')
 def index():
     return "Bienvenido a la API de Contabilidad Personal"
+
+@app.route('/check_username', methods=['GET'])
+def check_username():
+    username = request.args.get('username')
+    if not username:
+        return jsonify({'available': False, 'message': 'Username is required'}), 400
+
+    user = User.query.filter_by(username=username).first()
+    if user:
+        return jsonify({'available': False, 'message': 'El nombre de usuario ya está en uso'}), 200
+    else:
+        return jsonify({'available': True, 'message': 'El nombre de usuario está disponible'}), 200
+
+@app.route('/check_email', methods=['GET'])
+def check_email():
+    email = request.args.get('email')
+    if not email:
+        return jsonify({'exists': False, 'message': 'Email is required'}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if user:
+        return jsonify({'exists': True, 'message': 'El correo existe'}), 200
+    else:
+        return jsonify({'exists': False, 'message': 'El correo no se encuentra registrado'}), 404
+
+class RegisterResource(Resource):
+    def post(self):
+        data = request.get_json()
+        username = data['username']
+        email = data['email']
+        password = data['password']
+
+        if ' ' in username or ' ' in password:
+            return make_response(jsonify({"message": "El nombre de usuario y la contraseña no deben contener espacios."}), 400)
+
+        user = User.query.filter_by(username=username).first()
+        if user:
+            return make_response(jsonify({"message": "El nombre de usuario ya existe o está en uso. Por favor use otro Nombre de Usuario"}), 400)
+        
+        user = User.query.filter_by(email=email).first()
+        if user:
+            return make_response(jsonify({"message": "El correo electrónico ya está en uso. Por favor use otro correo electrónico"}), 400)
+
+        otp = send_otp(email, username)
+        otp_expiration = datetime.utcnow() + timedelta(minutes=5)
+
+        new_user = User(username=username, email=email, password=password, otp=str(otp), otp_expiration=otp_expiration)
+        db.session.add(new_user)
+        db.session.commit()
+
+        return make_response(jsonify({"message": "Código de confirmación enviado al correo electrónico. Por favor, ingrese el código para completar el registro."}), 201)
+
+class ConfirmOTPResource(Resource):
+    def post(self):
+        data = request.get_json()
+        email = data['email']
+        otp = data['otp']
+
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return make_response(jsonify({"message": "El correo electrónico no está registrado."}), 404)
+
+        if user.otp != otp or user.otp_expiration < datetime.utcnow():
+            return make_response(jsonify({"message": "Código de confirmación inválido o expirado."}), 400)
+
+        hashed_password = bcrypt.generate_password_hash(user.password).decode('utf-8')
+        user.password = hashed_password
+        user.otp = None
+        user.otp_expiration = None
+        db.session.commit()
+
+        return make_response(jsonify({"message": "Registro completado exitosamente."}), 200)
+
+api.add_resource(RegisterResource, '/register')
+api.add_resource(ConfirmOTPResource, '/confirm_otp')
+
+class PasswordResetRequestResource(Resource):
+    def post(self):
+        data = request.get_json()
+        email = data['email']
+
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return make_response(jsonify({"message": "El correo electrónico no está registrado."}), 404)
+
+        otp = send_otp(email, user.username)
+        user.otp = str(otp)
+        user.otp_expiration = datetime.utcnow() + timedelta(minutes=5)
+        db.session.commit()
+
+        return make_response(jsonify({"message": "Código de recuperación enviado al correo electrónico."}), 200)
+
+class PasswordResetResource(Resource):
+    def post(self):
+        data = request.get_json()
+        email = data['email']
+        otp = data['otp']
+        new_password = data['new_password']
+
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return make_response(jsonify({"message": "El correo electrónico no está registrado."}), 404)
+
+        if user.otp != otp or user.otp_expiration < datetime.utcnow():
+            return make_response(jsonify({"message": "Código de confirmación inválido o expirado."}), 400)
+
+        hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        user.password = hashed_password
+        user.otp = None
+        user.otp_expiration = None
+        db.session.commit()
+
+        return make_response(jsonify({"message": "Contraseña actualizada correctamente."}), 200)
+
+api.add_resource(PasswordResetRequestResource, '/password_reset_request')
+api.add_resource(PasswordResetResource, '/password_reset')
 
 class IngresoResource(Resource):
     @jwt_required()
@@ -76,7 +232,15 @@ class EgresoResource(Resource):
         current_user = get_jwt_identity()
         user = User.query.filter_by(username=current_user).first()
         data = request.get_json()
-        nuevo_egreso = EgresoController.create_egreso(data['categoria'], data['subcategoria'], data['monto'], data['fecha'], user.id, data.get('recurrente', False))
+        nuevo_egreso = EgresoController.create_egreso(
+            categoria=data['categoria'],
+            subcategoria=data.get('subcategoria', ''),
+            monto=data['monto'],
+            fecha=data['fecha'],
+            user_id=user.id,
+            bancos=data.get('bancos', None),  # Pasar el banco al controlador
+            recurrente=data.get('recurrente', False)
+        )
         return jsonify(nuevo_egreso.to_dict())
 
 api.add_resource(EgresoResource, '/egresos')
@@ -115,28 +279,6 @@ class TotalResource(Resource):
         })
 
 api.add_resource(TotalResource, '/total')
-
-class RegisterResource(Resource):
-    def post(self):
-        data = request.get_json()
-        username = data['username']
-        password = data['password']
-
-        if ' ' in username or ' ' in password:
-            return make_response(jsonify({"message": "El nombre de usuario y la contraseña no deben contener espacios."}), 400)
-
-        user = User.query.filter_by(username=username).first()
-        if user:
-            return make_response(jsonify({"message": "El nombre de usuario ya existe o está en uso. Por favor use otro Nombre de Usuario"}), 400)
-        
-        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-        new_user = User(username=username, password=hashed_password)
-        db.session.add(new_user)
-        db.session.commit()
-        
-        return make_response(jsonify({"message": "User registered successfully"}), 201)
-
-api.add_resource(RegisterResource, '/register')
 
 class LoginResource(Resource):
     def post(self):
@@ -182,9 +324,69 @@ class PagoRecurrenteResource(Resource):
         user = User.query.filter_by(username=current_user).first()
         data = request.get_json()
         categorias = data.get('categorias', [])
-        PagoRecurrenteController.delete_pagos_recurrentes(user.id)
-        for categoria in categorias:
-            PagoRecurrenteController.add_pago_recurrente(user.id, categoria)
+        PagoRecurrenteController.save_pagos_recurrentes(user.id, categorias)
         return jsonify({"message": "Pagos recurrentes actualizados"})
 
 api.add_resource(PagoRecurrenteResource, '/pagos_recurrentes')
+
+class DepositosBancosResource(Resource):
+    @jwt_required()
+    def get(self):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(username=current_user).first()
+        
+        year = request.args.get('year')
+        month = request.args.get('month')
+        
+        if year and month:
+            egresos = Egreso.query.filter_by(user_id=user.id).filter(db.extract('year', Egreso.fecha) == year, db.extract('month', Egreso.fecha) == month).all()
+        else:
+            egresos = Egreso.query.filter_by(user_id=user.id).all()
+        
+        depositos_por_banco = {}
+        total_depositos = 0
+
+        for egreso in egresos:
+            if egreso.bancos:
+                if egreso.bancos not in depositos_por_banco:
+                    depositos_por_banco[egreso.bancos] = []
+                depositos_por_banco[egreso.bancos].append({
+                    'fecha': egreso.fecha.isoformat(),
+                    'categoria': egreso.categoria,
+                    'monto': float(egreso.monto)
+                })
+                total_depositos += float(egreso.monto)
+
+        return jsonify({
+            "depositosPorBanco": depositos_por_banco,
+            "totalDepositos": total_depositos
+        })
+
+api.add_resource(DepositosBancosResource, '/depositos_bancos')
+
+# Código adicional para probar el envío de correos electrónicos utilizando Mailjet
+@app.route("/test_email")
+def test_email():
+    data = {
+        'Messages': [
+            {
+                "From": {
+                    "Email": "tu_correo_verificado@ejemplo.com",  # Asegúrate de que esta dirección esté verificada en Mailjet
+                    "Name": "Tu Nombre"
+                },
+                "To": [
+                    {
+                        "Email": "xaviline6@live.com",
+                        "Name": "Usuario"
+                    }
+                ],
+                "Subject": "Hello World",
+                "HTMLPart": "<strong>it works!</strong>"
+            }
+        ]
+    }
+    result = mailjet.send.create(data=data)
+    return jsonify({"status": result.status_code, "body": result.json()})
+
+if __name__ == "__main__":
+    app.run()

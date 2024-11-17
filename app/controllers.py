@@ -86,12 +86,16 @@ class EgresoController:
         return Egreso.query.filter_by(user_id=user_id).all()
 
     @staticmethod
-    def get_egreso_by_id(egreso_id):
-        return Egreso.query.get(egreso_id)
-
-    @staticmethod
-    def create_egreso(categoria, subcategoria, monto, fecha, user_id, recurrente=False):
-        nuevo_egreso = Egreso(categoria=categoria, subcategoria=subcategoria, monto=monto, fecha=fecha, recurrente=recurrente, user_id=user_id)
+    def create_egreso(categoria, subcategoria, monto, fecha, user_id, bancos=None, recurrente=False):
+        nuevo_egreso = Egreso(
+            categoria=categoria,
+            subcategoria=subcategoria,
+            monto=monto,
+            fecha=fecha,
+            user_id=user_id,
+            bancos=bancos,  # Asegúrate de que el banco se guarde
+            recurrente=recurrente
+        )
         db.session.add(nuevo_egreso)
         db.session.commit()
         
@@ -102,31 +106,6 @@ class EgresoController:
             db.session.commit()
         
         return nuevo_egreso
-
-    @staticmethod
-    def update_egreso(egreso_id, categoria, subcategoria, monto, fecha, recurrente=False):
-        egreso = Egreso.query.get(egreso_id)
-        if egreso:
-            egreso.categoria = categoria
-            egreso.subcategoria = subcategoria
-            egreso.monto = monto
-            egreso.fecha = fecha
-            egreso.recurrente = recurrente
-            db.session.commit()
-        return egreso
-
-    @staticmethod
-    def delete_egreso(egreso_id):
-        egreso = Egreso.query.get(egreso_id)
-        if egreso:
-            db.session.delete(egreso)
-            db.session.commit()
-        return egreso
-
-    @staticmethod
-    def get_total_egresos(user_id):
-        total = db.session.query(db.func.sum(Egreso.monto)).filter_by(user_id=user_id).scalar()
-        return total or 0
     
 class PagoRecurrenteController:
     @staticmethod
@@ -148,12 +127,16 @@ class PagoRecurrenteController:
 
     @staticmethod
     def add_pago_recurrente(user_id, categoria):
-        nuevo_pago_recurrente = PagoRecurrente(user_id=user_id, categoria=categoria)
-        db.session.add(nuevo_pago_recurrente)
-        db.session.commit()
-        return nuevo_pago_recurrente
+        # Verificar si el pago recurrente ya existe
+        existing_pago = PagoRecurrente.query.filter_by(user_id=user_id, categoria=categoria).first()
+        if not existing_pago:
+            nuevo_pago_recurrente = PagoRecurrente(user_id=user_id, categoria=categoria)
+            db.session.add(nuevo_pago_recurrente)
+            db.session.commit()
+            return nuevo_pago_recurrente
+        return existing_pago
 
     @staticmethod
-    def delete_pagos_recurrentes(user_id):
-        PagoRecurrente.query.filter_by(user_id=user_id).delete()
-        db.session.commit()
+    def save_pagos_recurrentes(user_id, categorias):
+        for categoria in categorias:
+            PagoRecurrenteController.add_pago_recurrente(user_id, categoria)

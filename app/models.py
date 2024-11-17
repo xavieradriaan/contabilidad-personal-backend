@@ -1,17 +1,22 @@
 #models.py
 from app import db
 from flask_login import UserMixin
+from datetime import datetime
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
     failed_attempts = db.Column(db.Integer, default=0)
+    otp = db.Column(db.String(6), nullable=True)  # Campo para almacenar el OTP
+    otp_expiration = db.Column(db.DateTime, nullable=True)  # Campo para almacenar la fecha de expiración del OTP
 
     def to_dict(self):
         return {
             'id': self.id,
             'username': self.username,
+            'email': self.email,
             'failed_attempts': self.failed_attempts
         }
 
@@ -61,6 +66,7 @@ class Egreso(db.Model):
     fecha = db.Column(db.Date, nullable=False)
     recurrente = db.Column(db.Boolean, default=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    bancos = db.Column(db.String(255), nullable=True)  # Nueva columna
     user = db.relationship('User', backref=db.backref('egresos', lazy=True))
 
     def to_dict(self):
@@ -71,7 +77,8 @@ class Egreso(db.Model):
             'monto': str(self.monto),
             'fecha': self.fecha.isoformat(),
             'recurrente': self.recurrente,
-            'user_id': self.user_id
+            'user_id': self.user_id,
+            'bancos': self.bancos  # Incluir la nueva columna en el diccionario
         }
 
 class PagoRecurrente(db.Model):
