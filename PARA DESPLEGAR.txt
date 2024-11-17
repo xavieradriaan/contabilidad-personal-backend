@@ -146,4 +146,4 @@ MIGRAR B.D:
 
 rm -rf migrations
 flask db init
-flask db migrate -m "Add descripcion to Ingreso"
+flask db migrate -m "Add descripcion to Ingresoo"
