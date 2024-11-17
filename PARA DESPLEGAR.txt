@@ -67,6 +67,16 @@ atexit.register(lambda: scheduler.shutdown())
 
 
 -------------PARA UNIR Y LUEGO DESPLEGAR: de Dev a Pre------------------
+
+TODO DEBO ESTAR EN EL ENVIORNMENT DE (VENV)
+- -PRIMERO MIGRAR B.D: - -
+
+rm -rf migrations
+flask db init
+flask db migrate -m "Add descripcion to Ingreso"
+
+
+---- AHORA SÍ PASOS ----
 git branch
 git checkout pre
 git merge dev

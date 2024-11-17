@@ -10,3 +10,4 @@ Cada vez que se crea un ingreso, otro ingreso o egreso, se asocia el user_id del
 Las consultas a las tablas ingreso, otro_ingreso y egreso filtran los datos por user_id, asegurando que cada usuario solo vea sus propios datos.
 
 
+REQUIREMENTS: TODAS LAS LIBRERÍAS.
