@@ -4,6 +4,10 @@ git checkout dev
 
 
 ----PARA UNIR LO DE PRE A DEV------
+
+
+-------
+
 git branch
 git checkout dev
 git merge pre
@@ -66,20 +70,48 @@ atexit.register(lambda: scheduler.shutdown())
 
 
 
--------------PARA UNIR Y LUEGO DESPLEGAR: de Dev a Pre------------------
+-------------PARA UNIR Y LUEGO DESPLEGAR: de Dev a Pre ------------------
 
 TODO DEBO ESTAR EN EL ENVIORNMENT DE (VENV)
 - -PRIMERO MIGRAR B.D: - -
 
+variables de entorno
+
+unset DATABASE_URL
+unset DATABASE_PUBLIC_URL
+unset PGPASSWORD
+
+export DATABASE_URL='postgresql://postgres:sXcuyMpiIdpYSGUhNXeIDmatpsyCfnYy@junction.proxy.rlwy.net:40186/railway'
+export DATABASE_PUBLIC_URL='postgresql://postgres:sXcuyMpiIdpYSGUhNXeIDmatpsyCfnYy@junction.proxy.rlwy.net:40186/railway'
+export PGPASSWORD='sXcuyMpiIdpYSGUhNXeIDmatpsyCfnYy'
+export SECRET_KEY='b90a493444a04c2013fb965eed73962e'
+export JWT_SECRET_KEY='b90a493444a04c2013fb965eed73962e'
+
+
+conectarse de manera remota a la base:
+psql -h junction.proxy.rlwy.net -U postgres -p 40186 -d railway
+
+y ver si aparecen los nuevos cambios
+
+
+
+----
+
 rm -rf migrations
+DROP TABLE IF EXISTS alembic_version;  (en la b.d)
 flask db init
 flask db migrate -m "Add descripcion to Ingreso"
-
+flask db upgrade
 
 ---- AHORA SÍ PASOS ----
+git add .
+git commit "cambios"
+git push 
+
 git branch
 git checkout pre
 git merge dev
+-- AQUÍ DEBES COPIAR Y PEGAR EL __init__.py de abajo para desplegar -- 
 git add .
 git commit -m "Resuelve conflictos del merge"
 git push origin pre
@@ -141,4 +173,4 @@ MIGRAR B.D:
 
 rm -rf migrations
 flask db init
-flask db migrate -m "Add descripcion to Ingreso"
+flask db migrate -m "Add descripcion to Ingresoo"
