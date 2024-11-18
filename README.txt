@@ -56,3 +56,6 @@ VACIAR REGISTROS DE UNA TABLA DE UN USUARIO ESPECÍFICO
 SELECT * FROM "user"; // así veo todos los usuarios
 SELECT id FROM "user" WHERE username = 'pruebas'; // ASI DEBO OBTENER EL USER ID DEL USUARIO
 DELETE FROM egreso WHERE user_id = 5;  //ASÍ BORRO LOS REGISTROS DE ESA TABLA
+
+
+.
