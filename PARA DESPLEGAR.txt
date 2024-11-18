@@ -79,7 +79,7 @@ atexit.register(lambda: scheduler.shutdown())
 
 
 
--------------PARA UNIR Y LUEGO DESPLEGAR: de Dev a Pre------------------
+-------------PARA UNIR Y LUEGO DESPLEGAR: de Dev a Pre ------------------
 
 TODO DEBO ESTAR EN EL ENVIORNMENT DE (VENV)
 - -PRIMERO MIGRAR B.D: - -
