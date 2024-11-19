@@ -100,8 +100,7 @@ class RegisterResource(Resource):
         db.session.add(new_user)
         db.session.commit()
 
-        return make_response(jsonify({"message": "Código de confirmación enviado al correo electrónico. Por favor, ingrese el código para completar el registro."}), 201)
-
+        return make_response(jsonify({"message": "Código de confirmación enviado al correo electrónico. Por favor, ingrese el código enviado a su bandeja Principal o su Buzón no deseado para completar el registro."}), 201)
 class ConfirmOTPResource(Resource):
     def post(self):
         data = request.get_json()

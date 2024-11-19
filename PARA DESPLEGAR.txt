@@ -75,7 +75,7 @@ atexit.register(lambda: scheduler.shutdown())
 TODO DEBO ESTAR EN EL ENVIORNMENT DE (VENV)
 - -PRIMERO MIGRAR B.D: - -
 
-variables de entorno
+-------variables de entorno-----
 
 unset DATABASE_URL
 unset DATABASE_PUBLIC_URL
@@ -91,7 +91,7 @@ export JWT_SECRET_KEY='b90a493444a04c2013fb965eed73962e'
 conectarse de manera remota a la base:
 psql -h junction.proxy.rlwy.net -U postgres -p 40186 -d railway
 
-y ver si aparecen los nuevos cambios
+y ver si aparecen los nuevos cambios en la bd
 
 
 
