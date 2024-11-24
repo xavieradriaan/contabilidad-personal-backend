@@ -1,3 +1,4 @@
+#__init__.py
 import atexit
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -14,7 +15,7 @@ from datetime import timedelta
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://xavier:1234@localhost/contabilidad_personal'
 app.config['SECRET_KEY'] = 'your_secret_key'
-app.config['JWT_SECRET_KEY'] = 'your_jwt_secret_key'
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your_jwt_secret_key')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=5)  # Expiración del token en 5 minutos
 
 db = SQLAlchemy(app)
