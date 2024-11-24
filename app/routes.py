@@ -37,6 +37,7 @@ def send_otp(email, username):
                 <p>Hola {username},</p>
                 <p>Bienvenido a la aplicación de Contabilízate App, tu aplicación para llevar tu contabilidad personal.</p>
                 <p>Tu código de confirmación es: <strong>{otp}</strong></p>
+                <p>Su usuario es: <strong>{username}</strong></p>
                 """
             }
         ]
@@ -346,10 +347,10 @@ class DepositosBancosResource(Resource):
         total_depositos = 0
 
         for egreso in egresos:
-            if egreso.bancos:
-                if egreso.bancos not in depositos_por_banco:
-                    depositos_por_banco[egreso.bancos] = []
-                depositos_por_banco[egreso.bancos].append({
+            if (banco := egreso.bancos):
+                if banco not in depositos_por_banco:
+                    depositos_por_banco[banco] = []
+                depositos_por_banco[banco].append({
                     'fecha': egreso.fecha.isoformat(),
                     'categoria': egreso.categoria,
                     'monto': float(egreso.monto)
