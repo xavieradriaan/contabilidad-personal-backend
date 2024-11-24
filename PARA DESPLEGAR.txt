@@ -122,6 +122,9 @@ git add .
 git commit -m "Resuelve conflictos del merge"
 git push origin pre
 
+
+
+------------ EN PRE PARA DESPLEGAR--------------
 #__init__.py
 import atexit
 from flask import Flask
