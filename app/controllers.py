@@ -1,6 +1,7 @@
-#controllers.py
+# controllers.py
 from app import db
 from app.models import Ingreso, OtroIngreso, Egreso, PagoRecurrente
+from datetime import datetime
 
 # Controlador para manejar los ingresos
 class IngresoController:
@@ -106,7 +107,7 @@ class EgresoController:
             db.session.commit()
         
         return nuevo_egreso
-    
+
 class PagoRecurrenteController:
     @staticmethod
     def get_pagos_recurrentes(user_id):
@@ -140,3 +141,23 @@ class PagoRecurrenteController:
     def save_pagos_recurrentes(user_id, categorias):
         for categoria in categorias:
             PagoRecurrenteController.add_pago_recurrente(user_id, categoria)
+
+# Controlador para manejar el saldo disponible
+class TotalController:
+    @staticmethod
+    def get_saldo_disponible(user_id, year, month):
+        # Calcular el saldo disponible acumulado de meses anteriores
+        fecha_actual = datetime(year, month, 1)
+        ingresos_anteriores = db.session.query(db.func.sum(Ingreso.monto)).filter(Ingreso.user_id == user_id, Ingreso.fecha < fecha_actual).scalar() or 0
+        otros_ingresos_anteriores = db.session.query(db.func.sum(OtroIngreso.monto)).filter(OtroIngreso.user_id == user_id, OtroIngreso.fecha < fecha_actual).scalar() or 0
+        egresos_anteriores = db.session.query(db.func.sum(Egreso.monto)).filter(Egreso.user_id == user_id, Egreso.fecha < fecha_actual).scalar() or 0
+        saldo_anterior = ingresos_anteriores + otros_ingresos_anteriores - egresos_anteriores
+
+        # Calcular los ingresos y egresos del mes seleccionado
+        ingresos_mes = db.session.query(db.func.sum(Ingreso.monto)).filter(Ingreso.user_id == user_id, db.extract('year', Ingreso.fecha) == year, db.extract('month', Ingreso.fecha) == month).scalar() or 0
+        otros_ingresos_mes = db.session.query(db.func.sum(OtroIngreso.monto)).filter(OtroIngreso.user_id == user_id, db.extract('year', OtroIngreso.fecha) == year, db.extract('month', OtroIngreso.fecha) == month).scalar() or 0
+        egresos_mes = db.session.query(db.func.sum(Egreso.monto)).filter(Egreso.user_id == user_id, db.extract('year', Egreso.fecha) == year, db.extract('month', Egreso.fecha) == month).scalar() or 0
+
+        # Calcular el saldo disponible acumulado
+        saldo_disponible = saldo_anterior + ingresos_mes + otros_ingresos_mes - egresos_mes
+        return saldo_anterior, saldo_disponible
