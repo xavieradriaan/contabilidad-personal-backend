@@ -9,7 +9,6 @@ git checkout dev
 
 ----PARA UNIR LO DE PRE A DEV------
 
-
 -------
 
 git branch
