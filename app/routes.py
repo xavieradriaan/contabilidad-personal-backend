@@ -277,12 +277,12 @@ class TotalResource(Resource):
         nombre_mes = month_names[month].capitalize()  # Capitalizar la primera letra
         
         return jsonify({
-            "total_ingresos": total_ingresos,
-            "total_otros_ingresos": total_otros_ingresos,
-            "total_egresos": total_egresos,
-            "total": total,
-            "saldo_anterior": saldo_anterior,
-            "saldo_disponible": saldo_disponible,
+            "total_ingresos": float(total_ingresos),
+            "total_otros_ingresos": float(total_otros_ingresos),
+            "total_egresos": float(total_egresos),
+            "total": float(total),
+            "saldo_anterior": float(saldo_anterior),
+            "saldo_disponible": float(saldo_disponible),
             "nombre_mes": nombre_mes,
             "detalles_ingresos": [ingreso.to_dict() for ingreso in ingresos],
             "detalles_otros_ingresos": [otro_ingreso.to_dict() for otro_ingreso in otros_ingresos],
