@@ -1,3 +1,7 @@
+ACTUALIZAR LAS LIBRERÍAS EN EL ARCHIVO REQUIREMENTS:
+pip freeze > requirements.txt
+
+
 -------- PARA PONER EN LOCAL-----
 git branch
 git checkout dev

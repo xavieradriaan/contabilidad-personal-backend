@@ -1,8 +1,8 @@
-#routes.py
+# routes.py
 from flask import request, jsonify, make_response
 from flask_restful import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.controllers import IngresoController, OtroIngresoController, EgresoController, PagoRecurrenteController
+from app.controllers import IngresoController, OtroIngresoController, EgresoController, PagoRecurrenteController, TotalController  # Asegúrate de importar TotalController
 from app import app, db, api, bcrypt
 from app.models import User, Ingreso, OtroIngreso, Egreso, PagoRecurrente
 from flask_jwt_extended import create_access_token
@@ -10,6 +10,9 @@ from mailjet_rest import Client
 import random
 import os
 from datetime import datetime, timedelta
+from calendar import month_name
+from babel.dates import get_month_names
+
 
 # Configurar la clave API de Mailjet
 MAILJET_API_KEY = "ba07f36f2dd4c3aa5a89811f3ca3a54e"
@@ -254,25 +257,33 @@ class TotalResource(Resource):
         year = request.args.get('year')
         month = request.args.get('month')
         
-        if year and month:
-            ingresos = Ingreso.query.filter_by(user_id=user.id).filter(db.extract('year', Ingreso.fecha) == year, db.extract('month', Ingreso.fecha) == month).all()
-            otros_ingresos = OtroIngreso.query.filter_by(user_id=user.id).filter(db.extract('year', OtroIngreso.fecha) == year, db.extract('month', OtroIngreso.fecha) == month).all()
-            egresos = Egreso.query.filter_by(user_id=user.id).filter(db.extract('year', Egreso.fecha) == year, db.extract('month', Egreso.fecha) == month).all()
-        else:
-            ingresos = Ingreso.query.filter_by(user_id=user.id).all()
-            otros_ingresos = OtroIngreso.query.filter_by(user_id=user.id).all()
-            egresos = Egreso.query.filter_by(user_id=user.id).all()
+        if not year or not month:
+            return make_response(jsonify({"message": "Year and month are required"}), 400)
+        
+        year = int(year)
+        month = int(month)
+        
+        ingresos = Ingreso.query.filter_by(user_id=user.id).filter(db.extract('year', Ingreso.fecha) == year, db.extract('month', Ingreso.fecha) == month).all()
+        otros_ingresos = OtroIngreso.query.filter_by(user_id=user.id).filter(db.extract('year', OtroIngreso.fecha) == year, db.extract('month', OtroIngreso.fecha) == month).all()
+        egresos = Egreso.query.filter_by(user_id=user.id).filter(db.extract('year', Egreso.fecha) == year, db.extract('month', Egreso.fecha) == month).all()
         
         total_ingresos = sum([ingreso.monto for ingreso in ingresos])
         total_otros_ingresos = sum([otro_ingreso.monto for otro_ingreso in otros_ingresos])
         total_egresos = sum([egreso.monto for egreso in egresos])
         total = total_ingresos + total_otros_ingresos - total_egresos
         
+        saldo_anterior, saldo_disponible = TotalController.get_saldo_disponible(user.id, year, month)
+        month_names = get_month_names(locale='es')
+        nombre_mes = month_names[month].capitalize()  # Capitalizar la primera letra
+        
         return jsonify({
             "total_ingresos": total_ingresos,
             "total_otros_ingresos": total_otros_ingresos,
             "total_egresos": total_egresos,
             "total": total,
+            "saldo_anterior": saldo_anterior,
+            "saldo_disponible": saldo_disponible,
+            "nombre_mes": nombre_mes,
             "detalles_ingresos": [ingreso.to_dict() for ingreso in ingresos],
             "detalles_otros_ingresos": [otro_ingreso.to_dict() for otro_ingreso in otros_ingresos],
             "detalles_egresos": [egreso.to_dict() for egreso in egresos]
