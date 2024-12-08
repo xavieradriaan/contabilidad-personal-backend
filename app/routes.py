@@ -2,7 +2,7 @@
 from flask import request, jsonify, make_response
 from flask_restful import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.controllers import IngresoController, OtroIngresoController, EgresoController, PagoRecurrenteController, TotalController  # Asegúrate de importar TotalController
+from app.controllers import IngresoController, OtroIngresoController, EgresoController, PagoRecurrenteController, TotalController
 from app import app, db, api, bcrypt
 from app.models import User, Ingreso, OtroIngreso, Egreso, PagoRecurrente
 from flask_jwt_extended import create_access_token
@@ -326,7 +326,17 @@ class PagoRecurrenteResource(Resource):
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(username=current_user).first()
-        pagos_recurrentes = PagoRecurrenteController.get_pagos_recurrentes(user.id)
+        
+        year = request.args.get('year')
+        month = request.args.get('month')
+        
+        if not year or not month:
+            return make_response(jsonify({"message": "Year and month are required"}), 400)
+        
+        year = int(year)
+        month = int(month)
+        
+        pagos_recurrentes = PagoRecurrenteController.get_pagos_recurrentes(user.id, year, month)
         return jsonify(pagos_recurrentes)
 
     @jwt_required()
@@ -401,3 +411,4 @@ def test_email():
 
 if __name__ == "__main__":
     app.run()
+

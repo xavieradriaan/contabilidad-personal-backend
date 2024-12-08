@@ -110,11 +110,14 @@ class EgresoController:
 
 class PagoRecurrenteController:
     @staticmethod
-    def get_pagos_recurrentes(user_id):
+    def get_pagos_recurrentes(user_id, year, month):
         pagos_recurrentes = PagoRecurrente.query.filter_by(user_id=user_id).all()
         result = []
         for pago in pagos_recurrentes:
-            egreso = Egreso.query.filter_by(user_id=user_id, categoria=pago.categoria).order_by(Egreso.fecha.desc()).first()
+            egreso = Egreso.query.filter_by(user_id=user_id, categoria=pago.categoria).filter(
+                db.extract('year', Egreso.fecha) == year,
+                db.extract('month', Egreso.fecha) == month
+            ).first()
             monto = float(egreso.monto) if egreso else 0.0
             result.append({
                 'id': pago.id,
@@ -127,8 +130,14 @@ class PagoRecurrenteController:
         return result
 
     @staticmethod
+    def reset_pagos_recurrentes():
+        pagos_recurrentes = PagoRecurrente.query.all()
+        for pago in pagos_recurrentes:
+            pago.pagado = False
+        db.session.commit()
+
+    @staticmethod
     def add_pago_recurrente(user_id, categoria):
-        # Verificar si el pago recurrente ya existe
         existing_pago = PagoRecurrente.query.filter_by(user_id=user_id, categoria=categoria).first()
         if not existing_pago:
             nuevo_pago_recurrente = PagoRecurrente(user_id=user_id, categoria=categoria)
@@ -161,3 +170,4 @@ class TotalController:
         # Calcular el saldo disponible acumulado
         saldo_disponible = saldo_anterior + ingresos_mes + otros_ingresos_mes - egresos_mes
         return saldo_anterior, saldo_disponible
+
