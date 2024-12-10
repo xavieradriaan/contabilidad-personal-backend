@@ -385,6 +385,31 @@ class DepositosBancosResource(Resource):
 
 api.add_resource(DepositosBancosResource, '/depositos_bancos')
 
+class CheckIngresosResource(Resource):
+    @jwt_required()
+    def get(self):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(username=current_user).first()
+        
+        year = request.args.get('year')
+        month = request.args.get('month')
+        
+        if not year or not month:
+            return make_response(jsonify({"message": "Year and month are required"}), 400)
+        
+        year = int(year)
+        month = int(month)
+        
+        quincena_exists = Ingreso.query.filter_by(user_id=user.id, descripcion='Quincena').filter(db.extract('year', Ingreso.fecha) == year, db.extract('month', Ingreso.fecha) == month).first() is not None
+        fin_mes_exists = Ingreso.query.filter_by(user_id=user.id, descripcion='Fin de Mes').filter(db.extract('year', Ingreso.fecha) == year, db.extract('month', Ingreso.fecha) == month).first() is not None
+        
+        return jsonify({
+            "quincena_exists": quincena_exists,
+            "fin_mes_exists": fin_mes_exists
+        })
+
+api.add_resource(CheckIngresosResource, '/check_ingresos')
+
 # Código adicional para probar el envío de correos electrónicos utilizando Mailjet
 @app.route("/test_email")
 def test_email():
