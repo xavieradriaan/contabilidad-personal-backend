@@ -114,18 +114,18 @@ class PagoRecurrenteController:
         pagos_recurrentes = PagoRecurrente.query.filter_by(user_id=user_id).all()
         result = []
         for pago in pagos_recurrentes:
-            egresos = Egreso.query.filter_by(user_id=user_id, categoria=pago.categoria).filter(
+            egreso = Egreso.query.filter_by(user_id=user_id, categoria=pago.categoria).filter(
                 db.extract('year', Egreso.fecha) == year,
                 db.extract('month', Egreso.fecha) == month
-            ).all()
-            monto = sum(float(egreso.monto) for egreso in egresos if egreso.monto is not None)
+            ).first()
+            monto = float(egreso.monto) if egreso and egreso.monto is not None else 0.0
             result.append({
                 'id': pago.id,
                 'user_id': pago.user_id,
                 'categoria': pago.categoria,
                 'pagado': pago.pagado,
                 'monto': monto,
-                'fecha': egresos[0].fecha if egresos else None
+                'fecha': egreso.fecha if egreso else None
             })
         return result
 
