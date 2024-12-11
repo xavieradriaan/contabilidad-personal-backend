@@ -118,7 +118,7 @@ class PagoRecurrenteController:
                 db.extract('year', Egreso.fecha) == year,
                 db.extract('month', Egreso.fecha) == month
             ).first()
-            monto = float(egreso.monto) if egreso else 0.0
+            monto = float(egreso.monto) if egreso and egreso.monto is not None else 0.0
             result.append({
                 'id': pago.id,
                 'user_id': pago.user_id,
