@@ -327,8 +327,17 @@ class PagoRecurrenteResource(Resource):
         current_user = get_jwt_identity()
         user = User.query.filter_by(username=current_user).first()
         
-        pagos_recurrentes = PagoRecurrente.query.filter_by(user_id=user.id).all()
-        return jsonify([pago.to_dict() for pago in pagos_recurrentes])
+        year = request.args.get('year')
+        month = request.args.get('month')
+        
+        if not year or not month:
+            return make_response(jsonify({"message": "Year and month are required"}), 400)
+        
+        year = int(year)
+        month = int(month)
+        
+        pagos_recurrentes = PagoRecurrenteController.get_pagos_recurrentes(user.id, year, month)
+        return jsonify(pagos_recurrentes)
 
     @jwt_required()
     def post(self):
