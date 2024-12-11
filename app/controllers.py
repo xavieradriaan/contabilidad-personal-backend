@@ -115,13 +115,14 @@ class PagoRecurrenteController:
                 db.extract('month', Egreso.fecha) == month
             ).all()
             monto = sum(float(egreso.monto) for egreso in egresos if egreso.monto is not None)
+            fecha = egresos[0].fecha if egresos else None
             result.append({
                 'id': pago.id,
                 'user_id': pago.user_id,
                 'categoria': pago.categoria,
                 'pagado': pago.pagado,
                 'monto': monto,
-                'fecha': egresos[0].fecha if egresos else None
+                'fecha': fecha
             })
         return result
 
@@ -146,7 +147,7 @@ class PagoRecurrenteController:
     def save_pagos_recurrentes(user_id, categorias):
         for categoria in categorias:
             PagoRecurrenteController.add_pago_recurrente(user_id, categoria)
-
+            
 # Controlador para manejar el saldo disponible
 class TotalController:
     @staticmethod
