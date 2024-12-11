@@ -414,7 +414,7 @@ class CheckIngresosResource(Resource):
         })
 
 # Registro del recurso en la API
-api.add_resource(CheckIngresosResource, '/check_ingresos')# Código adicional para probar el envío de correos electrónicos utilizando Mailjet
+api.add_resource(CheckIngresosResource, '/check_ingresos')
 @app.route("/test_email")
 def test_email():
     data = {
