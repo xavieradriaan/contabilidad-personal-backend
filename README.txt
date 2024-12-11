@@ -23,6 +23,7 @@ psql -d contabilidad_personal -U xavier
 SELECT * FROM "user";
 
 
+
 PARA SALIR
 \q
 
