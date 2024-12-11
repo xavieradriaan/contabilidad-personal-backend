@@ -28,13 +28,11 @@ CORS(app)  # Habilitar CORS para todas las rutas
 
 from app import routes
 from app.models import PagoRecurrente  # Importar el modelo PagoRecurrente
+from app.controllers import PagoRecurrenteController  # Importar el controlador PagoRecurrenteController
 
 def reset_pagos_recurrentes():
     with app.app_context():
-        pagos_recurrentes = PagoRecurrente.query.all()
-        for pago in pagos_recurrentes:
-            pago.pagado = False
-        db.session.commit()
+        PagoRecurrenteController.reset_pagos_recurrentes()
         app.logger.info("Pagos recurrentes restablecidos")
 
 scheduler = BackgroundScheduler()
