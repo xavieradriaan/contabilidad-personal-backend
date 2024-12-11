@@ -83,10 +83,6 @@ class OtroIngresoController:
 # Controlador para manejar los egresos
 class EgresoController:
     @staticmethod
-    def get_all_egresos(user_id):
-        return Egreso.query.filter_by(user_id=user_id).all()
-
-    @staticmethod
     def create_egreso(categoria, subcategoria, monto, fecha, user_id, bancos=None, recurrente=False):
         nuevo_egreso = Egreso(
             categoria=categoria,
@@ -94,7 +90,7 @@ class EgresoController:
             monto=monto,
             fecha=fecha,
             user_id=user_id,
-            bancos=bancos,  # Asegúrate de que el banco se guarde
+            bancos=bancos,
             recurrente=recurrente
         )
         db.session.add(nuevo_egreso)
@@ -114,18 +110,18 @@ class PagoRecurrenteController:
         pagos_recurrentes = PagoRecurrente.query.filter_by(user_id=user_id).all()
         result = []
         for pago in pagos_recurrentes:
-            egreso = Egreso.query.filter_by(user_id=user_id, categoria=pago.categoria).filter(
+            egresos = Egreso.query.filter_by(user_id=user_id, categoria=pago.categoria).filter(
                 db.extract('year', Egreso.fecha) == year,
                 db.extract('month', Egreso.fecha) == month
-            ).first()
-            monto = float(egreso.monto) if egreso else 0.0
+            ).all()
+            monto = sum(float(egreso.monto) for egreso in egresos if egreso.monto is not None)
             result.append({
                 'id': pago.id,
                 'user_id': pago.user_id,
                 'categoria': pago.categoria,
                 'pagado': pago.pagado,
                 'monto': monto,
-                'fecha': egreso.fecha if egreso else None
+                'fecha': egresos[0].fecha if egresos else None
             })
         return result
 
@@ -170,4 +166,3 @@ class TotalController:
         # Calcular el saldo disponible acumulado
         saldo_disponible = saldo_anterior + ingresos_mes + otros_ingresos_mes - egresos_mes
         return saldo_anterior, saldo_disponible
-

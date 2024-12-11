@@ -327,17 +327,8 @@ class PagoRecurrenteResource(Resource):
         current_user = get_jwt_identity()
         user = User.query.filter_by(username=current_user).first()
         
-        year = request.args.get('year')
-        month = request.args.get('month')
-        
-        if not year or not month:
-            return make_response(jsonify({"message": "Year and month are required"}), 400)
-        
-        year = int(year)
-        month = int(month)
-        
-        pagos_recurrentes = PagoRecurrenteController.get_pagos_recurrentes(user.id, year, month)
-        return jsonify(pagos_recurrentes)
+        pagos_recurrentes = PagoRecurrente.query.filter_by(user_id=user.id).all()
+        return jsonify([pago.to_dict() for pago in pagos_recurrentes])
 
     @jwt_required()
     def post(self):
@@ -391,26 +382,30 @@ class CheckIngresosResource(Resource):
         current_user = get_jwt_identity()
         user = User.query.filter_by(username=current_user).first()
         
+        # Recepción de parámetros year y month desde la URL
         year = request.args.get('year')
         month = request.args.get('month')
         
+        # Validación de que los parámetros year y month están presentes
         if not year or not month:
             return make_response(jsonify({"message": "Year and month are required"}), 400)
         
+        # Conversión de los parámetros year y month a enteros
         year = int(year)
         month = int(month)
         
+        # Consulta en la base de datos para verificar si existen ingresos de Quincena y Fin de Mes
         quincena_exists = Ingreso.query.filter_by(user_id=user.id, descripcion='Quincena').filter(db.extract('year', Ingreso.fecha) == year, db.extract('month', Ingreso.fecha) == month).first() is not None
         fin_mes_exists = Ingreso.query.filter_by(user_id=user.id, descripcion='Fin de Mes').filter(db.extract('year', Ingreso.fecha) == year, db.extract('month', Ingreso.fecha) == month).first() is not None
         
+        # Respuesta del endpoint
         return jsonify({
             "quincena_exists": quincena_exists,
             "fin_mes_exists": fin_mes_exists
         })
 
+# Registro del recurso en la API
 api.add_resource(CheckIngresosResource, '/check_ingresos')
-
-# Código adicional para probar el envío de correos electrónicos utilizando Mailjet
 @app.route("/test_email")
 def test_email():
     data = {
@@ -436,4 +431,3 @@ def test_email():
 
 if __name__ == "__main__":
     app.run()
-
