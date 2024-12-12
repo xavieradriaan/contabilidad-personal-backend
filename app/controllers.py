@@ -83,6 +83,10 @@ class OtroIngresoController:
 # Controlador para manejar los egresos
 class EgresoController:
     @staticmethod
+    def get_all_egresos(user_id):
+        return Egreso.query.filter_by(user_id=user_id).all()
+
+    @staticmethod
     def create_egreso(categoria, subcategoria, monto, fecha, user_id, bancos=None, recurrente=False):
         nuevo_egreso = Egreso(
             categoria=categoria,
@@ -109,6 +113,7 @@ class PagoRecurrenteController:
     def get_pagos_recurrentes(user_id, year, month):
         pagos_recurrentes = PagoRecurrente.query.filter_by(user_id=user_id).all()
         result = []
+        current_date = datetime.now()
         for pago in pagos_recurrentes:
             egresos = Egreso.query.filter_by(user_id=user_id, categoria=pago.categoria).filter(
                 db.extract('year', Egreso.fecha) == year,
@@ -116,13 +121,14 @@ class PagoRecurrenteController:
             ).all()
             monto = sum(float(egreso.monto) for egreso in egresos if egreso.monto is not None)
             fecha = egresos[0].fecha if egresos else None
+            is_current_month = fecha and fecha.year == current_date.year and fecha.month == current_date.month
             result.append({
                 'id': pago.id,
                 'user_id': pago.user_id,
                 'categoria': pago.categoria,
-                'pagado': pago.pagado,
-                'monto': monto,
-                'fecha': fecha
+                'pagado': is_current_month and pago.pagado,
+                'monto': is_current_month and monto or 0,
+                'fecha': is_current_month and fecha or None
             })
         return result
 

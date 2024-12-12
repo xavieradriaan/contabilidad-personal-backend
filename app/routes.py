@@ -248,6 +248,16 @@ class EgresoResource(Resource):
 
 api.add_resource(EgresoResource, '/egresos')
 
+class CheckEgresosResource(Resource):
+    @jwt_required()
+    def get(self):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(username=current_user).first()
+        egresos = EgresoController.get_all_egresos(user.id)
+        return jsonify({"egresos_registrados": len(egresos) > 0})
+
+api.add_resource(CheckEgresosResource, '/check_egresos')
+
 class TotalResource(Resource):
     @jwt_required()
     def get(self):
