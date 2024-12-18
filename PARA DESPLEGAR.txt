@@ -2,6 +2,13 @@ ACTUALIZAR LAS LIBRERÍAS EN EL ARCHIVO REQUIREMENTS:
 pip freeze > requirements.txt
 
 
+MIGRAR B.D:
+
+rm -rf migrations
+flask db init
+flask db migrate -m "Add descripcion to Ingresoo"
+
+
 -------- PARA PONER EN LOCAL-----
 git branch
 git checkout dev
@@ -188,8 +195,3 @@ if __name__ == "__main__":
 
 
 
-MIGRAR B.D:
-
-rm -rf migrations
-flask db init
-flask db migrate -m "Add descripcion to Ingresoo"
