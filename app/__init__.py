@@ -17,7 +17,7 @@ from datetime import timedelta
 load_dotenv()
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://xavier:1234@localhost/contabilidad_personal'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your_secret_key')
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your_jwt_secret_key')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=40)
