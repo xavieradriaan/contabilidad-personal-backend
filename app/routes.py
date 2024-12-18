@@ -2,9 +2,9 @@
 from flask import request, jsonify, make_response
 from flask_restful import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.controllers import IngresoController, OtroIngresoController, EgresoController, PagoRecurrenteController, TotalController
+from app.controllers import IngresoController, OtroIngresoController, EgresoController, PagoRecurrenteController, TotalController, CredencialController
 from app import app, db, api, bcrypt
-from app.models import User, Ingreso, OtroIngreso, Egreso, PagoRecurrente
+from app.models import User, Ingreso, OtroIngreso, Egreso, PagoRecurrente, Credencial
 from flask_jwt_extended import create_access_token
 from mailjet_rest import Client
 import random
@@ -12,6 +12,8 @@ import os
 from datetime import datetime, timedelta
 from calendar import month_name
 from babel.dates import get_month_names
+from app.controllers import CredencialController
+from app import app, api
 
 
 # Configurar la clave API de Mailjet
@@ -395,6 +397,36 @@ class DepositosBancosResource(Resource):
 
 api.add_resource(DepositosBancosResource, '/depositos_bancos')
 
+class CredencialResource(Resource):
+    @jwt_required()
+    def get(self):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(username=current_user).first()
+        credenciales = CredencialController.get_credenciales(user.id)
+        return jsonify([credencial.to_dict() for credencial in credenciales])
+
+    @jwt_required()
+    def post(self):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(username=current_user).first()
+        data = request.get_json()
+        nueva_credencial = CredencialController.create_credencial(user.id, data['descripcion'], data['credencial'])
+        return jsonify(nueva_credencial.to_dict())
+
+    @jwt_required()
+    def put(self):
+        data = request.get_json()
+        credencial = CredencialController.update_credencial(data['id'], data['descripcion'], data['credencial'])
+        return jsonify(credencial.to_dict())
+
+    @jwt_required()
+    def delete(self):
+        data = request.get_json()
+        credencial = CredencialController.delete_credencial(data['id'])
+        return jsonify(credencial.to_dict())
+
+api.add_resource(CredencialResource, '/credenciales')
+    
 class CheckIngresosResource(Resource):
     @jwt_required()
     def get(self):

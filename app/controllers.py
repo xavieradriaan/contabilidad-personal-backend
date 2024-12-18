@@ -1,7 +1,8 @@
 # controllers.py
 from app import db
-from app.models import Ingreso, OtroIngreso, Egreso, PagoRecurrente
+from app.models import Ingreso, OtroIngreso, Egreso, PagoRecurrente, Credencial
 from datetime import datetime
+import os
 
 # Controlador para manejar los ingresos
 class IngresoController:
@@ -43,6 +44,7 @@ class IngresoController:
         total = db.session.query(db.func.sum(Ingreso.monto)).filter_by(user_id=user_id).scalar()
         return total or 0
 
+
 # Controlador para manejar otros ingresos
 class OtroIngresoController:
     @staticmethod
@@ -79,6 +81,7 @@ class OtroIngresoController:
     def get_total_otros_ingresos(user_id):
         total = db.session.query(db.func.sum(OtroIngreso.monto)).filter_by(user_id=user_id).scalar()
         return total or 0
+
 
 # Controlador para manejar los egresos
 class EgresoController:
@@ -153,7 +156,8 @@ class PagoRecurrenteController:
     def save_pagos_recurrentes(user_id, categorias):
         for categoria in categorias:
             PagoRecurrenteController.add_pago_recurrente(user_id, categoria)
-            
+          
+# Controlador para manejar el saldo disponible
 # Controlador para manejar el saldo disponible
 class TotalController:
     @staticmethod
@@ -173,3 +177,33 @@ class TotalController:
         # Calcular el saldo disponible acumulado
         saldo_disponible = saldo_anterior + ingresos_mes + otros_ingresos_mes - egresos_mes
         return saldo_anterior, saldo_disponible
+
+# Controlador para manejar las credenciales
+class CredencialController:
+    @staticmethod
+    def get_credenciales(user_id):
+        return Credencial.query.filter_by(user_id=user_id).all()
+
+    @staticmethod
+    def create_credencial(user_id, descripcion, credencial):
+        nueva_credencial = Credencial(user_id=user_id, descripcion=descripcion, credencial=credencial)
+        db.session.add(nueva_credencial)
+        db.session.commit()
+        return nueva_credencial
+
+    @staticmethod
+    def update_credencial(credencial_id, descripcion, credencial):
+        credencial = Credencial.query.get(credencial_id)
+        if credencial:
+            credencial.descripcion = descripcion
+            credencial.credencial = credencial
+            db.session.commit()
+        return credencial
+
+    @staticmethod
+    def delete_credencial(credencial_id):
+        credencial = Credencial.query.get(credencial_id)
+        if credencial:
+            db.session.delete(credencial)
+            db.session.commit()
+        return credencial

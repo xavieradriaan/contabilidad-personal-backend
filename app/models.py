@@ -95,3 +95,24 @@ class PagoRecurrente(db.Model):
             'categoria': self.categoria,
             'pagado': self.pagado
         }
+
+class Credencial(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    descripcion = db.Column(db.String(255), nullable=False)
+    credencial = db.Column(db.Text, nullable=False)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_actualizacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    eliminado = db.Column(db.Boolean, default=False)
+    user = db.relationship('User', backref=db.backref('credenciales', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'descripcion': self.descripcion,
+            'credencial': self.credencial,
+            'fecha_creacion': self.fecha_creacion.isoformat(),
+            'fecha_actualizacion': self.fecha_actualizacion.isoformat(),
+            'eliminado': self.eliminado
+        }

@@ -9,14 +9,18 @@ from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask_migrate import Migrate
+from dotenv import load_dotenv
 import os
 from datetime import timedelta
 
+# Cargar las variables de entorno desde el archivo .env
+load_dotenv()
+
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://xavier:1234@localhost/contabilidad_personal'
-app.config['SECRET_KEY'] = 'your_secret_key'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your_secret_key')
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your_jwt_secret_key')
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=40)  # Expiración del token en 5 minutos
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=40)
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -24,11 +28,11 @@ api = Api(app)
 login_manager = LoginManager(app)
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
-CORS(app)  # Habilitar CORS para todas las rutas
+CORS(app)
 
 from app import routes
-from app.models import PagoRecurrente  # Importar el modelo PagoRecurrente
-from app.controllers import PagoRecurrenteController  # Importar el controlador PagoRecurrenteController
+from app.models import PagoRecurrente
+from app.controllers import PagoRecurrenteController
 
 def reset_pagos_recurrentes():
     with app.app_context():

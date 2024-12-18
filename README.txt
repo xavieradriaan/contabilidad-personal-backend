@@ -6,8 +6,7 @@ el usuario master es: xavier y la contraseña: 1234
 export DATABASE_URL='postgresql://postgres:HBcydfmgMctKDZoFFqXfTragVVWRPJXj@postgres.railway.internal:5432/railway' 
 export SECRET_KEY='b90a493444a04c2013fb965eed73962e' 
 export JWT_SECRET_KEY='b90a493444a04c2013fb965eed73962e'
-
-
+export ENCRYPTION_KEY='yxZZI9aulu-l-ErwCUr5AI4FLKQWrrCAxVBoqqgCVVY='
 
 
 
