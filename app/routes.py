@@ -73,14 +73,13 @@ def check_username():
 def check_email():
     email = request.args.get('email')
     if not email:
-        return jsonify({'exists': False, 'message': 'Email is required'}), 400
+        return jsonify({'exists': False, 'message': 'Email es requerido'}), 400
 
     user = User.query.filter_by(email=email).first()
     if user:
-        return jsonify({'exists': True, 'message': 'El correo existe'}), 200
+        return jsonify({'exists': True, 'message': 'El correo ya está registrado'}), 200
     else:
-        return jsonify({'exists': False, 'message': 'El correo no se encuentra registrado'}), 404
-
+        return jsonify({'exists': False, 'message': 'Correo disponible'}), 200
 class RegisterResource(Resource):
     def post(self):
         data = request.get_json()
@@ -457,6 +456,7 @@ class CheckIngresosResource(Resource):
 
 # Registro del recurso en la API
 api.add_resource(CheckIngresosResource, '/check_ingresos')
+
 @app.route("/test_email")
 def test_email():
     data = {
