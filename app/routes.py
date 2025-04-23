@@ -73,14 +73,13 @@ def check_username():
 def check_email():
     email = request.args.get('email')
     if not email:
-        return jsonify({'exists': False, 'message': 'Email is required'}), 400
+        return jsonify({'exists': False, 'message': 'Email es requerido'}), 400
 
     user = User.query.filter_by(email=email).first()
     if user:
-        return jsonify({'exists': True, 'message': 'El correo existe'}), 200
+        return jsonify({'exists': True, 'message': 'El correo ya está registrado'}), 200
     else:
-        return jsonify({'exists': False, 'message': 'El correo no se encuentra registrado'}), 404
-
+        return jsonify({'exists': False, 'message': 'Correo disponible'}), 200
 class RegisterResource(Resource):
     def post(self):
         data = request.get_json()
@@ -165,6 +164,7 @@ class PasswordResetResource(Resource):
         user.password = hashed_password
         user.otp = None
         user.otp_expiration = None
+        user.failed_attempts = 0  # Reset failed attempts
         db.session.commit()
 
         return make_response(jsonify({"message": "Contraseña actualizada correctamente."}), 200)
@@ -311,10 +311,13 @@ class LoginResource(Resource):
             return make_response(jsonify({"message": "Usuario no existe"}), 404)
 
         if user.failed_attempts >= 3:
-            return make_response(jsonify({"message": "El usuario se ha bloqueado. Por favor, comunícate con tu administrador"}), 403)
+            return make_response(jsonify({
+                "message": "La cuenta se encuentra bloqueada. Se necesita restablecer la contraseña",
+                "reset_url": "http://localhost:8080/password_reset"
+            }), 403)  # Cambiar el mensaje y agregar URL
 
         if user and bcrypt.check_password_hash(user.password, data['password']):
-            user.failed_attempts = 0  # Reset failed attempts on successful login
+            user.failed_attempts = 0
             db.session.commit()
             access_token = create_access_token(identity=user.username)
             return jsonify(access_token=access_token)
@@ -322,7 +325,10 @@ class LoginResource(Resource):
             user.failed_attempts += 1
             db.session.commit()
             remaining_attempts = 3 - user.failed_attempts
-            return make_response(jsonify({"message": f"Credenciales incorrectas. Intentos restantes: {remaining_attempts}", "remaining_attempts": remaining_attempts}), 401)
+            return make_response(jsonify({
+                "message": f"Credenciales incorrectas. Intentos restantes: {remaining_attempts}",
+                "remaining_attempts": remaining_attempts
+            }), 401)
 
 api.add_resource(LoginResource, '/login')
 
@@ -457,6 +463,7 @@ class CheckIngresosResource(Resource):
 
 # Registro del recurso en la API
 api.add_resource(CheckIngresosResource, '/check_ingresos')
+
 @app.route("/test_email")
 def test_email():
     data = {
