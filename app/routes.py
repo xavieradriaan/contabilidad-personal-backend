@@ -14,6 +14,8 @@ from calendar import month_name
 from babel.dates import get_month_names
 from app.controllers import CredencialController
 from app import app, api
+from app.controllers import TarjetaCreditoController
+from decimal import Decimal  # Importar Decimal para manejar valores monetarios
 
 
 # Configurar la clave API de Mailjet
@@ -176,14 +178,14 @@ class IngresoResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         ingresos = IngresoController.get_all_ingresos(user.id)
         return jsonify([ingreso.to_dict() for ingreso in ingresos])
 
     @jwt_required()
     def post(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         data = request.get_json()
         descripcion = data.get('descripcion', '')
         
@@ -204,14 +206,14 @@ class OtroIngresoResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         otros_ingresos = OtroIngresoController.get_all_otros_ingresos(user.id)
         return jsonify([otro_ingreso.to_dict() for otro_ingreso in otros_ingresos])
 
     @jwt_required()
     def post(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         data = request.get_json()
         nuevo_otro_ingreso = OtroIngresoController.create_otro_ingreso(
             fuente=data['fuente'],
@@ -228,25 +230,70 @@ class EgresoResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         egresos = EgresoController.get_all_egresos(user.id)
         return jsonify([egreso.to_dict() for egreso in egresos])
 
     @jwt_required()
     def post(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         data = request.get_json()
+
+        tipo_egreso = data.get('tipo_egreso', 'debito')  # Obtener el tipo de egreso, por defecto 'debito'
+
+        if tipo_egreso == 'credito':  # Si es un egreso con tarjeta de crédito
+            tarjeta = TarjetaCreditoController.get_tarjeta_by_nombre(data['tarjeta'], user.id)
+            if not tarjeta:
+                return {"message": "La tarjeta especificada no existe."}, 400
+
+            # Registrar el consumo en la tarjeta
+            TarjetaCreditoController.registrar_consumo(tarjeta.id, data['monto'])
+
+            # Crear el egreso con el nombre de la tarjeta en el campo bancos
+            nuevo_egreso = EgresoController.create_egreso(
+                categoria=data['categoria'],
+                subcategoria=data.get('subcategoria', ''),
+                monto=Decimal(data['monto']),  # Convertir el monto a Decimal
+                fecha=data['fecha'],
+                user_id=user.id,
+                bancos=tarjeta.tarjeta_nombre,  # Guardar el nombre de la tarjeta
+                tipo_egreso=tipo_egreso
+            )
+            return {"message": "Egreso registrado correctamente con tarjeta de crédito."}, 201
+
+        elif tipo_egreso == 'debito' and data['categoria'] == 'Pago de tarjetas':  # Si es un pago de tarjeta
+            tarjeta = TarjetaCreditoController.get_tarjeta_by_nombre(data['bancos'], user.id)
+            if not tarjeta:
+                return {"message": "La tarjeta especificada no existe."}, 400
+
+            # Actualizar el estado de la tarjeta si el monto pagado cubre el saldo pendiente
+            TarjetaCreditoController.actualizar_estado_tarjeta(tarjeta.id, data['monto'])
+
+            # Crear el egreso
+            nuevo_egreso = EgresoController.create_egreso(
+                categoria=data['categoria'],
+                subcategoria=data.get('subcategoria', ''),
+                monto=Decimal(data['monto']),
+                fecha=data['fecha'],
+                user_id=user.id,
+                bancos=data['bancos'],
+                tipo_egreso=tipo_egreso
+            )
+            return {"message": "Pago de tarjeta registrado correctamente."}, 201
+
+        # Manejar otros egresos (débitos o efectivo)
         nuevo_egreso = EgresoController.create_egreso(
             categoria=data['categoria'],
             subcategoria=data.get('subcategoria', ''),
             monto=data['monto'],
             fecha=data['fecha'],
             user_id=user.id,
-            bancos=data.get('bancos', None),  # Pasar el banco al controlador
-            recurrente=data.get('recurrente', False)
+            bancos=data.get('bancos', None),
+            recurrente=data.get('recurrente', False),
+            tipo_egreso=tipo_egreso
         )
-        return jsonify(nuevo_egreso.to_dict())
+        return nuevo_egreso.to_dict(), 201
 
 api.add_resource(EgresoResource, '/egresos')
 
@@ -254,7 +301,7 @@ class CheckEgresosResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         egresos = EgresoController.get_all_egresos(user.id)
         return jsonify({"egresos_registrados": len(egresos) > 0})
 
@@ -264,7 +311,7 @@ class TotalResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         
         year = request.args.get('year')
         month = request.args.get('month')
@@ -281,7 +328,8 @@ class TotalResource(Resource):
         
         total_ingresos = sum([ingreso.monto for ingreso in ingresos])
         total_otros_ingresos = sum([otro_ingreso.monto for otro_ingreso in otros_ingresos])
-        total_egresos = sum([egreso.monto for egreso in egresos])
+        total_egresos = sum(e.monto for e in egresos if e.tipo_egreso != 'credito')
+        total_tarjetas_credito = sum(e.monto for e in egresos if e.tipo_egreso == 'credito')
         total = total_ingresos + total_otros_ingresos - total_egresos
         
         saldo_anterior, saldo_disponible = TotalController.get_saldo_disponible(user.id, year, month)
@@ -292,6 +340,7 @@ class TotalResource(Resource):
             "total_ingresos": float(total_ingresos),
             "total_otros_ingresos": float(total_otros_ingresos),
             "total_egresos": float(total_egresos),
+            "total_tarjetas_credito": float(total_tarjetas_credito),
             "total": float(total),
             "saldo_anterior": float(saldo_anterior),
             "saldo_disponible": float(saldo_disponible),
@@ -319,7 +368,7 @@ class LoginResource(Resource):
         if user and bcrypt.check_password_hash(user.password, data['password']):
             user.failed_attempts = 0
             db.session.commit()
-            access_token = create_access_token(identity=user.username)
+            access_token = create_access_token(identity=user.id)  # Cambiado a usar user.id como identity
             return jsonify(access_token=access_token)
         else:
             user.failed_attempts += 1
@@ -343,7 +392,7 @@ class PagoRecurrenteResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         
         year = request.args.get('year')
         month = request.args.get('month')
@@ -360,7 +409,7 @@ class PagoRecurrenteResource(Resource):
     @jwt_required()
     def post(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         data = request.get_json()
         categorias = data.get('categorias', [])
         PagoRecurrenteController.save_pagos_recurrentes(user.id, categorias)
@@ -372,7 +421,7 @@ class DepositosBancosResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         
         year = request.args.get('year')
         month = request.args.get('month')
@@ -407,14 +456,14 @@ class CredencialResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         credenciales = CredencialController.get_credenciales(user.id)
         return jsonify([credencial.to_dict() for credencial in credenciales])
 
     @jwt_required()
     def post(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         data = request.get_json()
         nueva_credencial = CredencialController.create_credencial(user.id, data['descripcion'], data['credencial'])
         return jsonify(nueva_credencial.to_dict())
@@ -437,7 +486,7 @@ class CheckIngresosResource(Resource):
     @jwt_required()
     def get(self):
         current_user = get_jwt_identity()
-        user = User.query.filter_by(username=current_user).first()
+        user = User.query.filter_by(id=current_user).first()
         
         # Recepción de parámetros year y month desde la URL
         year = request.args.get('year')
@@ -464,6 +513,39 @@ class CheckIngresosResource(Resource):
 # Registro del recurso en la API
 api.add_resource(CheckIngresosResource, '/check_ingresos')
 
+class CheckPagosRecurrentesResource(Resource):
+    @jwt_required()
+    def get(self):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(id=current_user).first()
+
+        count = PagoRecurrente.query.filter_by(user_id=user.id).count()
+        return jsonify({"tiene_pagos_recurrentes": count > 0})
+
+api.add_resource(CheckPagosRecurrentesResource, '/check_pagos_recurrentes')
+
+class RecordatoriosPagosRecurrentesResource(Resource):
+    @jwt_required()
+    def get(self):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(id=current_user).first()
+
+        # Obtener pagos recurrentes pendientes
+        pagos_pendientes = PagoRecurrente.query.filter_by(user_id=user.id, pagado=False).all()
+        fecha_actual = datetime.now()
+        sugerencias = []
+
+        for pago in pagos_pendientes:
+            sugerencias.append({
+                "categoria": pago.categoria,
+                "fecha_creacion": pago.fecha_creacion.isoformat(),
+                "mensaje": f"Recuerda realizar el pago de {pago.categoria}."
+            })
+
+        return jsonify(sugerencias)
+
+api.add_resource(RecordatoriosPagosRecurrentesResource, '/recordatorios_pagos_recurrentes')
+
 @app.route("/test_email")
 def test_email():
     data = {
@@ -486,6 +568,27 @@ def test_email():
     }
     result = mailjet.send.create(data=data)
     return jsonify({"status": result.status_code, "body": result.json()})
+
+@app.route('/tarjetas_credito', methods=['GET'])
+@jwt_required()
+def get_tarjetas_credito():
+    current_user = get_jwt_identity()
+    include_paid = request.args.get('include_paid', 'false').strip().lower() == 'true'  # Ensure proper handling of the parameter
+    tarjetas = TarjetaCreditoController.get_tarjetas(int(current_user), include_paid=include_paid)
+    return jsonify([tarjeta.to_dict() for tarjeta in tarjetas])
+
+@app.route('/tarjetas_credito', methods=['POST'])
+@jwt_required()
+def add_tarjeta_credito():
+    current_user = get_jwt_identity()
+    data = request.get_json()
+    nueva_tarjeta = TarjetaCreditoController.add_tarjeta(
+        user_id=current_user,
+        tarjeta_nombre=data['nombre'],
+        fecha_corte=data['fechaCorte'],
+        fecha_pago=data['fechaPago']
+    )
+    return jsonify(nueva_tarjeta.to_dict()), 201
 
 if __name__ == "__main__":
     app.run()

@@ -67,6 +67,7 @@ class Egreso(db.Model):
     recurrente = db.Column(db.Boolean, default=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     bancos = db.Column(db.String(255), nullable=True)  # Nueva columna
+    tipo_egreso = db.Column(db.String(50), nullable=False, default='debito')  # Puede ser 'debito' o 'credito'
     user = db.relationship('User', backref=db.backref('egresos', lazy=True))
 
     def to_dict(self):
@@ -78,7 +79,8 @@ class Egreso(db.Model):
             'fecha': self.fecha.isoformat(),
             'recurrente': self.recurrente,
             'user_id': self.user_id,
-            'bancos': self.bancos  # Incluir la nueva columna en el diccionario
+            'bancos': self.bancos,  # Incluir la nueva columna en el diccionario
+            'tipo_egreso': self.tipo_egreso  # Asegurar que este campo se incluya
         }
 
 class PagoRecurrente(db.Model):
@@ -86,6 +88,8 @@ class PagoRecurrente(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     categoria = db.Column(db.String(255), nullable=False)
     pagado = db.Column(db.Boolean, default=False)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_actualizacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     user = db.relationship('User', backref=db.backref('pagos_recurrentes', lazy=True))
 
     def to_dict(self):
@@ -115,4 +119,25 @@ class Credencial(db.Model):
             'fecha_creacion': self.fecha_creacion.isoformat(),
             'fecha_actualizacion': self.fecha_actualizacion.isoformat(),
             'eliminado': self.eliminado
+        }
+
+class Deuda(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tarjeta_nombre = db.Column(db.String(255), nullable=False)
+    fecha_corte = db.Column(db.Date, nullable=False)
+    fecha_pago = db.Column(db.Date, nullable=False)
+    monto = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    pagada = db.Column(db.Boolean, default=False)
+    user = db.relationship('User', backref=db.backref('deudas', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'tarjeta_nombre': self.tarjeta_nombre,
+            'fecha_corte': self.fecha_corte.isoformat(),
+            'fecha_pago': self.fecha_pago.isoformat(),
+            'monto': str(self.monto),
+            'user_id': self.user_id,
+            'pagada': self.pagada
         }

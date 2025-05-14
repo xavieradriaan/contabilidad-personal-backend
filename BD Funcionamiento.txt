@@ -13,6 +13,10 @@ export ENCRYPTION_KEY='yxZZI9aulu-l-ErwCUr5AI4FLKQWrrCAxVBoqqgCVVY='
 PARA ENTRAR A LA B.D 
 psql -d contabilidad_personal -U xavier
 
+PARA CONSULTAR TODAS LAS TABLAS
+psql -d contabilidad_personal -U xavier
+\dt
+
 PARA CONSULTAR TABLAS
 psql -d contabilidad_personal -U xavier
 SELECT * FROM ingreso;
