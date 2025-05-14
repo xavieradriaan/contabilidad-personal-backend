@@ -1,5 +1,5 @@
 # routes.py
-from flask import request, jsonify, make_response
+from flask import request, jsonify, make_response, current_app
 from flask_restful import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.controllers import IngresoController, OtroIngresoController, EgresoController, PagoRecurrenteController, TotalController, CredencialController
@@ -240,60 +240,56 @@ class EgresoResource(Resource):
         user = User.query.filter_by(id=current_user).first()
         data = request.get_json()
 
-        tipo_egreso = data.get('tipo_egreso', 'debito')  # Obtener el tipo de egreso, por defecto 'debito'
+        # Validar campos requeridos
+        required_fields = ['categoria', 'monto', 'fecha', 'tarjeta']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                current_app.logger.error(f"Campo faltante: {field}")
+                return {"message": f"El campo '{field}' es obligatorio."}, 400
 
-        if tipo_egreso == 'credito':  # Si es un egreso con tarjeta de crédito
-            tarjeta = TarjetaCreditoController.get_tarjeta_by_nombre(data['tarjeta'], user.id)
-            if not tarjeta:
-                return {"message": "La tarjeta especificada no existe."}, 400
+        try:
+            tipo_egreso = data.get('tipo_egreso', 'debito')
 
-            # Registrar el consumo en la tarjeta
-            TarjetaCreditoController.registrar_consumo(tarjeta.id, data['monto'])
+            if tipo_egreso == 'credito':
+                tarjeta_nombre = data['tarjeta']
+                tarjeta = TarjetaCreditoController.get_tarjeta_by_nombre(tarjeta_nombre, user.id)
+                if not tarjeta:
+                    current_app.logger.error(f"Tarjeta no encontrada: {tarjeta_nombre}")
+                    return {"message": "Tarjeta no encontrada"}, 404
 
-            # Crear el egreso con el nombre de la tarjeta en el campo bancos
-            nuevo_egreso = EgresoController.create_egreso(
-                categoria=data['categoria'],
-                subcategoria=data.get('subcategoria', ''),
-                monto=Decimal(data['monto']),  # Convertir el monto a Decimal
-                fecha=data['fecha'],
-                user_id=user.id,
-                bancos=tarjeta.tarjeta_nombre,  # Guardar el nombre de la tarjeta
-                tipo_egreso=tipo_egreso
-            )
-            return {"message": "Egreso registrado correctamente con tarjeta de crédito."}, 201
+                try:
+                    # Registrar consumo
+                    TarjetaCreditoController.registrar_consumo(tarjeta.id, data['monto'])
+                except Exception as e:
+                    current_app.logger.error(f"Error al registrar consumo: {str(e)}")
+                    return {"message": "Error al actualizar la tarjeta"}, 500
 
-        elif tipo_egreso == 'debito' and data['categoria'] == 'Pago de tarjetas':  # Si es un pago de tarjeta
-            tarjeta = TarjetaCreditoController.get_tarjeta_by_nombre(data['bancos'], user.id)
-            if not tarjeta:
-                return {"message": "La tarjeta especificada no existe."}, 400
-
-            # Actualizar el estado de la tarjeta si el monto pagado cubre el saldo pendiente
-            TarjetaCreditoController.actualizar_estado_tarjeta(tarjeta.id, data['monto'])
-
-            # Crear el egreso
-            nuevo_egreso = EgresoController.create_egreso(
-                categoria=data['categoria'],
-                subcategoria=data.get('subcategoria', ''),
-                monto=Decimal(data['monto']),
-                fecha=data['fecha'],
-                user_id=user.id,
-                bancos=data['bancos'],
-                tipo_egreso=tipo_egreso
-            )
-            return {"message": "Pago de tarjeta registrado correctamente."}, 201
-
-        # Manejar otros egresos (débitos o efectivo)
-        nuevo_egreso = EgresoController.create_egreso(
-            categoria=data['categoria'],
-            subcategoria=data.get('subcategoria', ''),
-            monto=data['monto'],
-            fecha=data['fecha'],
-            user_id=user.id,
-            bancos=data.get('bancos', None),
-            recurrente=data.get('recurrente', False),
-            tipo_egreso=tipo_egreso
-        )
-        return nuevo_egreso.to_dict(), 201
+                # Crear egreso
+                nuevo_egreso = EgresoController.create_egreso(
+                    categoria=data['categoria'],
+                    subcategoria=data.get('subcategoria', ''),
+                    monto=Decimal(data['monto']),
+                    fecha=data['fecha'],
+                    user_id=user.id,
+                    bancos=tarjeta.tarjeta_nombre,
+                    tipo_egreso=tipo_egreso
+                )
+                return nuevo_egreso.to_dict(), 201
+            else:
+                # Lógica para débito
+                nuevo_egreso = EgresoController.create_egreso(
+                    categoria=data['categoria'],
+                    subcategoria=data.get('subcategoria', ''),
+                    monto=Decimal(data['monto']),
+                    fecha=data['fecha'],
+                    user_id=user.id,
+                    bancos=data.get('bancos'),
+                    tipo_egreso=tipo_egreso
+                )
+                return nuevo_egreso.to_dict(), 201
+        except Exception as e:
+            current_app.logger.error(f"Error en POST /egresos: {str(e)}")
+            return {"message": "Error interno del servidor"}, 500
 
 api.add_resource(EgresoResource, '/egresos')
 
@@ -577,17 +573,27 @@ def get_tarjetas_credito():
     tarjetas = TarjetaCreditoController.get_tarjetas(int(current_user), include_paid=include_paid)
     return jsonify([tarjeta.to_dict() for tarjeta in tarjetas])
 
+from app.controllers import PagoRecurrenteController  # Ensure this import exists
+
 @app.route('/tarjetas_credito', methods=['POST'])
 @jwt_required()
 def add_tarjeta_credito():
     current_user = get_jwt_identity()
     data = request.get_json()
+    
     nueva_tarjeta = TarjetaCreditoController.add_tarjeta(
         user_id=current_user,
         tarjeta_nombre=data['nombre'],
         fecha_corte=data['fechaCorte'],
         fecha_pago=data['fechaPago']
     )
+    
+    # Add as a recurring payment automatically
+    PagoRecurrenteController.add_pago_recurrente(
+        user_id=current_user,
+        categoria=nueva_tarjeta.tarjeta_nombre
+    )
+    
     return jsonify(nueva_tarjeta.to_dict()), 201
 
 if __name__ == "__main__":

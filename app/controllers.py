@@ -101,18 +101,28 @@ class EgresoController:
             user_id=user_id,
             bancos=bancos,
             recurrente=recurrente,
-            tipo_egreso=tipo_egreso  # Agregar tipo_egreso al modelo
+            tipo_egreso=tipo_egreso
         )
         db.session.add(nuevo_egreso)
         db.session.commit()
-        
-        # Marcar el pago recurrente como pagado si corresponde
-        pago_recurrente = PagoRecurrente.query.filter_by(user_id=user_id, categoria=categoria).first()
+
+        # Handle "Pago de tarjetas" specifically
+        if categoria == 'Pago de tarjetas' and bancos:
+            categoria_pago = bancos  # Use the bank name as the category
+        else:
+            categoria_pago = categoria
+
+        # Find and update the corresponding recurrent payment
+        pago_recurrente = PagoRecurrente.query.filter_by(
+            user_id=user_id,
+            categoria=categoria_pago
+        ).first()
+
         if pago_recurrente:
             pago_recurrente.pagado = True
-            pago_recurrente.fecha_actualizacion = datetime.utcnow()  # Actualizar la fecha de actualización
+            pago_recurrente.fecha_actualizacion = datetime.utcnow()
             db.session.commit()
-        
+
         return nuevo_egreso
 
 class PagoRecurrenteController:
@@ -121,18 +131,22 @@ class PagoRecurrenteController:
         pagos_recurrentes = PagoRecurrente.query.filter_by(user_id=user_id).all()
         result = []
         for pago in pagos_recurrentes:
-            egresos = Egreso.query.filter_by(user_id=user_id, categoria=pago.categoria).filter(
+            # Match payments by category or bank name for "Pago de tarjetas"
+            egresos = Egreso.query.filter(
+                Egreso.user_id == user_id,
+                (Egreso.categoria == pago.categoria) | 
+                ((Egreso.categoria == 'Pago de tarjetas') & (Egreso.bancos == pago.categoria)),
                 db.extract('year', Egreso.fecha) == year,
                 db.extract('month', Egreso.fecha) == month
             ).all()
             monto = sum(float(egreso.monto) for egreso in egresos if egreso.monto is not None)
-            fecha = egresos[0].fecha if egresos else None
+            fecha = egresos[0].fecha.isoformat() if egresos else None  # Format date using isoformat()
             result.append({
                 'id': pago.id,
                 'user_id': pago.user_id,
                 'categoria': pago.categoria,
                 'pagado': pago.pagado,
-                'monto': monto or 0,  # Si no hay monto, devuelve 0
+                'monto': monto or 0,  # Default to 0 if no amount
                 'fecha': fecha
             })
         return result
@@ -250,19 +264,21 @@ class TarjetaCreditoController:
 
     @staticmethod
     def get_tarjeta_by_nombre(tarjeta_nombre, user_id):
-        return Deuda.query.filter_by(tarjeta_nombre=tarjeta_nombre, user_id=user_id, pagada=False).first()
+        return Deuda.query.filter_by(tarjeta_nombre=tarjeta_nombre, user_id=user_id).first()
 
     @staticmethod
     def registrar_consumo(tarjeta_id, monto):
-        tarjeta = Deuda.query.get(tarjeta_id)
-        if tarjeta:
-            # Convert monto to Decimal for consistency
+        try:
+            tarjeta = Deuda.query.get(tarjeta_id)
+            if not tarjeta:
+                raise ValueError("La tarjeta especificada no existe.")
+            
             monto = Decimal(monto)
             tarjeta.monto += monto
             db.session.commit()
             return tarjeta
-        else:
-            raise ValueError("La tarjeta especificada no existe.")
+        except Exception:
+            raise  # Las excepciones serán manejadas en el route
 
     @staticmethod
     def actualizar_estado_tarjeta(tarjeta_id, monto_pagado):
