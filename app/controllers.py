@@ -108,11 +108,29 @@ class EgresoController:
 
         # Handle "Pago de tarjetas" specifically
         if categoria == 'Pago de tarjetas' and bancos:
-            categoria_pago = bancos  # Use the bank name as the category
+            # Actualizar estado de la tarjeta en Deuda
+            tarjeta = Deuda.query.filter_by(
+                user_id=user_id,
+                tarjeta_nombre=bancos
+            ).first()
+
+            if tarjeta:
+                try:
+                    # Convertir montos a Decimal para precisión
+                    monto_pago = Decimal(str(monto))
+                    TarjetaCreditoController.actualizar_estado_tarjeta(
+                        tarjeta_id=tarjeta.id,
+                        monto_pagado=monto_pago
+                    )
+                except Exception as e:
+                    db.session.rollback()
+                    raise Exception(f"Error al actualizar tarjeta: {str(e)}")
+
+            categoria_pago = bancos  # Usar el nombre del banco como categoría
         else:
             categoria_pago = categoria
 
-        # Find and update the corresponding recurrent payment
+        # Encontrar y actualizar pago recurrente
         pago_recurrente = PagoRecurrente.query.filter_by(
             user_id=user_id,
             categoria=categoria_pago
@@ -284,18 +302,15 @@ class TarjetaCreditoController:
     def actualizar_estado_tarjeta(tarjeta_id, monto_pagado):
         tarjeta = Deuda.query.get(tarjeta_id)
         if not tarjeta:
-            raise ValueError("La tarjeta especificada no existe.")
+            raise ValueError("Tarjeta no existe")
         
-        # Convert monto_pagado to Decimal for consistency
-        monto_pagado = Decimal(monto_pagado)
-        
-        # Update the card's balance
+        if monto_pagado <= Decimal('0'):
+            raise ValueError("Monto de pago inválido")
+
         tarjeta.monto -= monto_pagado
+        tarjeta.pagada = tarjeta.monto <= Decimal('0')
         
-        # Mark the card as paid if the balance is zero or less
-        if tarjeta.monto <= 0:
-            tarjeta.monto = 0
-            tarjeta.pagada = True
+        if tarjeta.pagada:
+            tarjeta.monto = Decimal('0')
         
         db.session.commit()
-        return tarjeta

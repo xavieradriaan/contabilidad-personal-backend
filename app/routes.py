@@ -241,14 +241,19 @@ class EgresoResource(Resource):
         data = request.get_json()
 
         # Validar campos requeridos
-        required_fields = ['categoria', 'monto', 'fecha', 'tarjeta']
+        required_fields = ['categoria', 'monto', 'fecha']
         for field in required_fields:
             if field not in data or not data[field]:
                 current_app.logger.error(f"Campo faltante: {field}")
                 return {"message": f"El campo '{field}' es obligatorio."}, 400
 
+        # Validar el campo 'tarjeta' solo si el tipo de egreso es 'credito'
+        if data.get('tipo_egreso') == 'credito' and ('tarjeta' not in data or not data['tarjeta']):
+            current_app.logger.error("Campo faltante: tarjeta")
+            return {"message": "El campo 'tarjeta' es obligatorio para egresos de tipo 'credito'."}, 400
+
         try:
-            tipo_egreso = data.get('tipo_egreso', 'debito')
+            tipo_egreso = data.get('tipo_egreso', 'debito')  # Default to 'debito'
 
             if tipo_egreso == 'credito':
                 tarjeta_nombre = data['tarjeta']
@@ -257,12 +262,8 @@ class EgresoResource(Resource):
                     current_app.logger.error(f"Tarjeta no encontrada: {tarjeta_nombre}")
                     return {"message": "Tarjeta no encontrada"}, 404
 
-                try:
-                    # Registrar consumo
-                    TarjetaCreditoController.registrar_consumo(tarjeta.id, data['monto'])
-                except Exception as e:
-                    current_app.logger.error(f"Error al registrar consumo: {str(e)}")
-                    return {"message": "Error al actualizar la tarjeta"}, 500
+                # Registrar consumo
+                TarjetaCreditoController.registrar_consumo(tarjeta.id, data['monto'])
 
                 # Crear egreso
                 nuevo_egreso = EgresoController.create_egreso(
@@ -276,7 +277,7 @@ class EgresoResource(Resource):
                 )
                 return nuevo_egreso.to_dict(), 201
             else:
-                # Lógica para débito
+                # Crear egreso para tipo 'debito'
                 nuevo_egreso = EgresoController.create_egreso(
                     categoria=data['categoria'],
                     subcategoria=data.get('subcategoria', ''),
