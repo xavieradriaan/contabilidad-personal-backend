@@ -16,6 +16,7 @@ from app.controllers import CredencialController
 from app import app, api
 from app.controllers import TarjetaCreditoController
 from decimal import Decimal  # Importar Decimal para manejar valores monetarios
+from flask_bcrypt import generate_password_hash
 
 
 # Configurar la clave API de Mailjet
@@ -100,10 +101,11 @@ class RegisterResource(Resource):
         if user:
             return make_response(jsonify({"message": "El correo electrónico ya está en uso. Por favor use otro correo electrónico"}), 400)
 
+        hashed_password = generate_password_hash(password).decode('utf-8')
         otp = send_otp(email, username)
         otp_expiration = datetime.utcnow() + timedelta(minutes=5)
 
-        new_user = User(username=username, email=email, password=password, otp=str(otp), otp_expiration=otp_expiration)
+        new_user = User(username=username, email=email, password=hashed_password, otp=str(otp), otp_expiration=otp_expiration)
         db.session.add(new_user)
         db.session.commit()
 
@@ -121,8 +123,7 @@ class ConfirmOTPResource(Resource):
         if user.otp != otp or user.otp_expiration < datetime.utcnow():
             return make_response(jsonify({"message": "Código de confirmación inválido o expirado."}), 400)
 
-        hashed_password = bcrypt.generate_password_hash(user.password).decode('utf-8')
-        user.password = hashed_password
+        # Quita el doble hasheo, solo limpia OTP
         user.otp = None
         user.otp_expiration = None
         db.session.commit()
@@ -379,6 +380,7 @@ class LoginResource(Resource):
 api.add_resource(LoginResource, '/login')
 
 class UsersResource(Resource):
+    @jwt_required()
     def get(self):
         users = User.query.all()
         return jsonify([user.to_dict() for user in users])
@@ -468,8 +470,38 @@ class CredencialResource(Resource):
     @jwt_required()
     def put(self):
         data = request.get_json()
-        credencial = CredencialController.update_credencial(data['id'], data['descripcion'], data['credencial'])
-        return jsonify(credencial.to_dict())
+        credencial_id = data.get('id')
+        new_description = data.get('descripcion')
+        new_credencial = data.get('credencial')
+
+        # Validaciones básicas
+        if not credencial_id or not new_description or not new_credencial:
+            return {"message": "Todos los campos son obligatorios."}, 400
+
+        # Obtener la credencial actual
+        cred = Credencial.query.get(credencial_id)
+        if not cred:
+            return {"message": "Credencial no encontrada."}, 404
+
+        # Verificar si hay cambios reales
+        if cred.descripcion == new_description and cred.credencial == new_credencial:
+            # SIEMPRE retorna el objeto credencial actual
+            return {
+                "message": "No se detectaron cambios.",
+                "updated": False,
+                "credencial": cred.to_dict()
+            }, 200
+
+        # Actualizar la credencial
+        cred.descripcion = new_description
+        cred.credencial = new_credencial
+        db.session.commit()
+
+        return {
+            "message": "Credencial actualizada correctamente.",
+            "updated": True,
+            "credencial": cred.to_dict()
+        }, 200
 
     @jwt_required()
     def delete(self):
