@@ -629,5 +629,49 @@ def add_tarjeta_credito():
     
     return jsonify(nueva_tarjeta.to_dict()), 201
 
+@app.route('/api/tarjetas_con_ciclo')
+@jwt_required()
+def api_tarjetas_con_ciclo():
+    try:
+        current_user = get_jwt_identity()
+        tarjetas_info = TarjetaCreditoController.get_tarjetas_con_estado_ciclo(current_user)
+        return jsonify({
+            'success': True,
+            'tarjetas': tarjetas_info
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/dashboard_financiero')
+@jwt_required()
+def api_dashboard_financiero():
+    try:
+        current_user = get_jwt_identity()
+        fecha_actual = datetime.now()
+        
+        # Obtener resumen completo
+        resumen = TotalController.get_resumen_financiero_completo(
+            current_user, fecha_actual.year, fecha_actual.month
+        )
+        
+        return jsonify({
+            'success': True,
+            'resumen': resumen
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/procesar_cortes')
+@jwt_required()
+def procesar_cortes():
+    try:
+        tarjetas_procesadas = TarjetaCreditoController.procesar_corte_mensual()
+        return jsonify({
+            'success': True, 
+            'message': f'{tarjetas_procesadas} tarjetas procesadas'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == "__main__":
     app.run()

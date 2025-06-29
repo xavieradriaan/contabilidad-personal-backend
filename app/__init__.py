@@ -32,7 +32,7 @@ CORS(app)
 
 from app import routes
 from app.models import PagoRecurrente
-from app.controllers import PagoRecurrenteController
+from app.controllers import PagoRecurrenteController, setup_scheduler_jobs
 
 def reset_pagos_recurrentes():
     with app.app_context():
@@ -48,6 +48,13 @@ scheduler.add_job(
     minute=59,
     second=59
 )
+
+# Configurar jobs del scheduler para tarjetas de crédito directamente
+try:
+    setup_scheduler_jobs()
+except Exception as e:
+    app.logger.warning(f"No se pudo configurar scheduler de tarjetas: {e}")
+
 scheduler.start()
 
 # Shut down the scheduler when exiting the app

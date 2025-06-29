@@ -108,13 +108,13 @@ class EgresoController:
 
         # Handle "Pago de tarjetas" specifically
         if categoria == 'Pago de tarjetas' and bancos:
-            # Actualizar estado de la tarjeta en Deuda
-            tarjeta = Deuda.query.filter_by(
+            # Buscar TODAS las tarjetas con ese nombre (por si hay duplicados)
+            tarjetas = Deuda.query.filter_by(
                 user_id=user_id,
                 tarjeta_nombre=bancos
-            ).first()
+            ).all()
 
-            if tarjeta:
+            for tarjeta in tarjetas:
                 try:
                     # Convertir montos a Decimal para precisión
                     monto_pago = Decimal(str(monto))
@@ -124,9 +124,9 @@ class EgresoController:
                     )
                 except Exception as e:
                     db.session.rollback()
-                    raise Exception(f"Error al actualizar tarjeta: {str(e)}")
+                    raise Exception(f"Error al actualizar tarjeta {tarjeta.id}: {str(e)}")
 
-            categoria_pago = bancos  # Usar el nombre del banco como categoría
+            categoria_pago = bancos
         else:
             categoria_pago = categoria
 
@@ -213,18 +213,117 @@ class TotalController:
         ).scalar() or 0
 
         # Calcular el saldo disponible acumulado de meses anteriores
-        ingresos_anteriores = db.session.query(db.func.sum(Ingreso.monto)).filter(Ingreso.user_id == user_id, Ingreso.fecha < fecha_actual).scalar() or 0
-        otros_ingresos_anteriores = db.session.query(db.func.sum(OtroIngreso.monto)).filter(OtroIngreso.user_id == user_id, OtroIngreso.fecha < fecha_actual).scalar() or 0
+        ingresos_anteriores = db.session.query(db.func.sum(Ingreso.monto)).filter(
+            Ingreso.user_id == user_id, 
+            Ingreso.fecha < fecha_actual
+        ).scalar() or 0
+        
+        otros_ingresos_anteriores = db.session.query(db.func.sum(OtroIngreso.monto)).filter(
+            OtroIngreso.user_id == user_id, 
+            OtroIngreso.fecha < fecha_actual
+        ).scalar() or 0
+        
         saldo_anterior = ingresos_anteriores + otros_ingresos_anteriores - egresos_anteriores
 
         # Calcular los ingresos y egresos del mes seleccionado
-        ingresos_mes = db.session.query(db.func.sum(Ingreso.monto)).filter(Ingreso.user_id == user_id, db.extract('year', Ingreso.fecha) == year, db.extract('month', Ingreso.fecha) == month).scalar() or 0
-        otros_ingresos_mes = db.session.query(db.func.sum(OtroIngreso.monto)).filter(OtroIngreso.user_id == user_id, db.extract('year', OtroIngreso.fecha) == year, db.extract('month', OtroIngreso.fecha) == month).scalar() or 0
-        egresos_mes = db.session.query(db.func.sum(Egreso.monto)).filter(Egreso.user_id == user_id, db.extract('year', Egreso.fecha) == year, db.extract('month', Egreso.fecha) == month).scalar() or 0
+        ingresos_mes = db.session.query(db.func.sum(Ingreso.monto)).filter(
+            Ingreso.user_id == user_id, 
+            db.extract('year', Ingreso.fecha) == year, 
+            db.extract('month', Ingreso.fecha) == month
+        ).scalar() or 0
+        
+        otros_ingresos_mes = db.session.query(db.func.sum(OtroIngreso.monto)).filter(
+            OtroIngreso.user_id == user_id, 
+            db.extract('year', OtroIngreso.fecha) == year, 
+            db.extract('month', OtroIngreso.fecha) == month
+        ).scalar() or 0
+        
+        # Egresos del mes SIN incluir consumos de crédito
+        egresos_mes = db.session.query(db.func.sum(Egreso.monto)).filter(
+            Egreso.user_id == user_id, 
+            db.extract('year', Egreso.fecha) == year, 
+            db.extract('month', Egreso.fecha) == month,
+            Egreso.tipo_egreso != 'credito'  # Excluir consumos de crédito
+        ).scalar() or 0
 
         # Calcular el saldo disponible acumulado
         saldo_disponible = saldo_anterior + ingresos_mes + otros_ingresos_mes - egresos_mes
         return saldo_anterior, saldo_disponible
+
+    @staticmethod
+    def get_resumen_financiero_completo(user_id, year, month):
+        """Nuevo método que proporciona un resumen completo incluyendo tarjetas de crédito"""
+        
+        # Obtener saldo disponible (dinero real)
+        saldo_anterior, saldo_disponible = TotalController.get_saldo_disponible(user_id, year, month)
+        
+        # Calcular consumos de crédito del mes
+        consumos_credito_mes = db.session.query(db.func.sum(Egreso.monto)).filter(
+            Egreso.user_id == user_id,
+            db.extract('year', Egreso.fecha) == year,
+            db.extract('month', Egreso.fecha) == month,
+            Egreso.tipo_egreso == 'credito'
+        ).scalar() or 0
+        
+        # Calcular pagos de tarjetas del mes
+        pagos_tarjetas_mes = db.session.query(db.func.sum(Egreso.monto)).filter(
+            Egreso.user_id == user_id,
+            db.extract('year', Egreso.fecha) == year,
+            db.extract('month', Egreso.fecha) == month,
+            Egreso.categoria == 'Pago de tarjetas'
+        ).scalar() or 0
+        
+        # Obtener información de tarjetas de crédito
+        tarjetas_info = TarjetaCreditoController.get_tarjetas_con_estado_ciclo(user_id)
+        
+        # CALCULAR TOTALES CORRECTAMENTE
+        total_deuda_tarjetas = sum(item['saldo_a_pagar'] for item in tarjetas_info)
+        total_consumos_periodo = sum(item['consumos_periodo_actual'] for item in tarjetas_info)
+        
+        # Contar tarjetas por estado
+        tarjetas_vencidas = len([t for t in tarjetas_info if t['estado_ciclo'] == 'vencida'])
+        tarjetas_por_pagar = len([t for t in tarjetas_info if t['estado_ciclo'] == 'por_pagar'])
+        
+        # Calcular próximos vencimientos (próximos 7 días)
+        from datetime import date, timedelta
+        proximos_vencimientos = []
+        fecha_limite = date.today() + timedelta(days=7)
+        
+        for item in tarjetas_info:
+            tarjeta_data = item['tarjeta']
+            if (tarjeta_data.get('fecha_vencimiento') and 
+                date.fromisoformat(tarjeta_data['fecha_vencimiento']) <= fecha_limite and 
+                item['saldo_a_pagar'] > 0):
+                proximos_vencimientos.append({
+                    'nombre': tarjeta_data['tarjeta_nombre'],
+                    'monto': item['saldo_a_pagar'],
+                    'dias': item['dias_para_vencimiento'],
+                    'fecha_vencimiento': tarjeta_data['fecha_vencimiento']
+                })
+        
+        return {
+            # Dinero real disponible
+            'saldo_anterior': float(saldo_anterior),
+            'saldo_disponible': float(saldo_disponible),
+            
+            # Actividad del mes
+            'consumos_credito_mes': float(consumos_credito_mes),
+            'pagos_tarjetas_mes': float(pagos_tarjetas_mes),
+            
+            # Estado de tarjetas
+            'total_deuda_tarjetas': float(total_deuda_tarjetas),
+            'total_consumos_periodo': float(total_consumos_periodo),
+            'tarjetas_vencidas': tarjetas_vencidas,
+            'tarjetas_por_pagar': tarjetas_por_pagar,
+            
+            # Alertas
+            'proximos_vencimientos': proximos_vencimientos,
+            
+            # Métricas adicionales
+            'poder_compra_total': float(saldo_disponible),
+            'comprometido_tarjetas': float(total_deuda_tarjetas),
+            'uso_credito_mes': float(consumos_credito_mes)
+        }
 
 # Controlador para manejar las credenciales
 class CredencialController:
@@ -258,6 +357,117 @@ class CredencialController:
 
 class TarjetaCreditoController:
     @staticmethod
+    def get_tarjetas_con_estado_ciclo(user_id):
+        """Obtiene tarjetas con información del ciclo actual"""
+        tarjetas = Deuda.query.filter_by(user_id=user_id).all()
+        resultado = []
+        
+        for tarjeta in tarjetas:
+            tarjeta.calcular_ciclo_actual()  # Recalcular ciclo
+            
+            # ✅ CORRECCIÓN: Usar el valor ya guardado en lugar de calcular dinámicamente
+            consumos_periodo = float(tarjeta.saldo_periodo_actual or 0)
+            
+            # Calcular pagos del periodo (esto sí necesita cálculo dinámico)
+            pagos_periodo = db.session.query(db.func.sum(Egreso.monto)).filter(
+                Egreso.user_id == user_id,
+                Egreso.categoria == 'Pago de tarjetas',
+                Egreso.bancos == tarjeta.tarjeta_nombre,
+                Egreso.fecha >= tarjeta.ciclo_actual_inicio
+            ).scalar() or 0
+            
+            # NUEVA LÓGICA DE ESTADO CORREGIDA
+            from datetime import date
+            hoy = date.today()
+            
+            # Calcular el día de corte y pago del mes actual
+            try:
+                corte_mes_actual = date(hoy.year, hoy.month, tarjeta.fecha_corte)
+            except ValueError:
+                from calendar import monthrange
+                ultimo_dia = monthrange(hoy.year, hoy.month)[1]
+                corte_mes_actual = date(hoy.year, hoy.month, min(tarjeta.fecha_corte, ultimo_dia))
+            
+            # Calcular fecha de pago
+            if tarjeta.fecha_pago < tarjeta.fecha_corte:
+                # Pago es el siguiente mes
+                if corte_mes_actual.month == 12:
+                    año_pago = corte_mes_actual.year + 1
+                    mes_pago = 1
+                else:
+                    año_pago = corte_mes_actual.year
+                    mes_pago = corte_mes_actual.month + 1
+                
+                try:
+                    fecha_pago_mes = date(año_pago, mes_pago, tarjeta.fecha_pago)
+                except ValueError:
+                    from calendar import monthrange
+                    ultimo_dia_pago = monthrange(año_pago, mes_pago)[1]
+                    fecha_pago_mes = date(año_pago, mes_pago, min(tarjeta.fecha_pago, ultimo_dia_pago))
+            else:
+                # Pago es el mismo mes
+                try:
+                    fecha_pago_mes = date(hoy.year, hoy.month, tarjeta.fecha_pago)
+                except ValueError:
+                    from calendar import monthrange
+                    ultimo_dia_pago = monthrange(hoy.year, hoy.month)[1]
+                    fecha_pago_mes = date(hoy.year, hoy.month, min(tarjeta.fecha_pago, ultimo_dia_pago))
+            
+            # DETERMINAR ESTADO REAL (LÓGICA COMPLETAMENTE CORREGIDA)
+            saldo_anterior = float(tarjeta.saldo_periodo_anterior or 0)
+            
+            if saldo_anterior <= 0 and tarjeta.pagada:
+                # NO hay deuda cortada pendiente, determinar por ciclo actual
+                if hoy < corte_mes_actual:
+                    estado_ciclo = "en_curso"
+                    dias_para_corte = (corte_mes_actual - hoy).days
+                    dias_para_vencimiento = (fecha_pago_mes - hoy).days
+                else:
+                    # Ya pasó el corte, pero no hay deuda anterior = está al día
+                    estado_ciclo = "al_dia"
+                    dias_para_corte = 0
+                    dias_para_vencimiento = (fecha_pago_mes - hoy).days if hoy <= fecha_pago_mes else 0
+            elif saldo_anterior > 0 and not tarjeta.pagada:
+                # HAY deuda cortada sin pagar
+                if hoy <= fecha_pago_mes:
+                    estado_ciclo = "por_pagar"
+                    dias_para_corte = 0
+                    dias_para_vencimiento = (fecha_pago_mes - hoy).days
+                else:
+                    estado_ciclo = "vencida"
+                    dias_para_corte = 0
+                    dias_para_vencimiento = 0
+            else:
+                # Casos especiales - usar fechas como fallback
+                if hoy < corte_mes_actual:
+                    estado_ciclo = "en_curso"
+                    dias_para_corte = (corte_mes_actual - hoy).days
+                    dias_para_vencimiento = (fecha_pago_mes - hoy).days
+                elif hoy <= fecha_pago_mes:
+                    estado_ciclo = "por_pagar"
+                    dias_para_corte = 0
+                    dias_para_vencimiento = (fecha_pago_mes - hoy).days
+                else:
+                    estado_ciclo = "vencida"
+                    dias_para_corte = 0
+                    dias_para_vencimiento = 0
+            
+            # CALCULAR SALDO TOTAL A PAGAR CORRECTAMENTE
+            saldo_total = float(tarjeta.saldo_periodo_anterior or 0) + consumos_periodo
+            
+            resultado.append({
+                'tarjeta': tarjeta.to_dict(),
+                'consumos_periodo_actual': consumos_periodo,  # ✅ Ahora usa el valor correcto
+                'pagos_realizados': float(pagos_periodo),
+                'estado_ciclo': estado_ciclo,
+                'dias_para_corte': max(0, dias_para_corte),
+                'dias_para_vencimiento': max(0, dias_para_vencimiento),
+                'saldo_a_pagar': saldo_total
+            })
+        
+        return resultado
+
+    @staticmethod
     def get_tarjetas(user_id, include_paid=False):
         query = Deuda.query.filter_by(user_id=user_id)
         if not include_paid:
@@ -266,16 +476,41 @@ class TarjetaCreditoController:
 
     @staticmethod
     def add_tarjeta(user_id, tarjeta_nombre, fecha_corte, fecha_pago, subcategoria=None):
+        from datetime import datetime
+        
+        # Extraer el día de la fecha si viene como string de fecha completa
+        if isinstance(fecha_corte, str):
+            if '-' in fecha_corte:  # Formato de fecha completa (YYYY-MM-DD)
+                fecha_corte_obj = datetime.strptime(fecha_corte, '%Y-%m-%d')
+                dia_corte = fecha_corte_obj.day
+            else:  # Ya es solo el día
+                dia_corte = int(fecha_corte)
+        else:
+            dia_corte = int(fecha_corte)
+            
+        if isinstance(fecha_pago, str):
+            if '-' in fecha_pago:  # Formato de fecha completa (YYYY-MM-DD)
+                fecha_pago_obj = datetime.strptime(fecha_pago, '%Y-%m-%d')
+                dia_pago = fecha_pago_obj.day
+            else:  # Ya es solo el día
+                dia_pago = int(fecha_pago)
+        else:
+            dia_pago = int(fecha_pago)
+        
         nueva_tarjeta = Deuda(
             user_id=user_id,
             tarjeta_nombre=tarjeta_nombre,
-            fecha_corte=fecha_corte,
-            fecha_pago=fecha_pago,
+            fecha_corte=dia_corte,  # Usar el día extraído
+            fecha_pago=dia_pago,    # Usar el día extraído
             monto=0,
-            pagada=False
+            pagada=True,  # Empezar como pagada (sin deuda cortada)
+            saldo_periodo_anterior=0,
+            saldo_periodo_actual=0
         )
-        if subcategoria:  # Save subcategoria if provided
+        if subcategoria:
             nueva_tarjeta.subcategoria = subcategoria
+        
+        nueva_tarjeta.calcular_ciclo_actual()
         db.session.add(nueva_tarjeta)
         db.session.commit()
         return nueva_tarjeta
@@ -292,11 +527,20 @@ class TarjetaCreditoController:
                 raise ValueError("La tarjeta especificada no existe.")
             
             monto = Decimal(monto)
-            tarjeta.monto += monto
+            
+            # Los consumos SIEMPRE van al periodo actual
+            tarjeta.saldo_periodo_actual += monto
+            
+            # Actualizar monto total
+            tarjeta.monto = tarjeta.saldo_periodo_anterior + tarjeta.saldo_periodo_actual
+            
+            # NO cambiar el estado "pagada" por consumos del periodo actual
+            # tarjeta.pagada refleja solo el estado del periodo cortado
+                
             db.session.commit()
             return tarjeta
         except Exception:
-            raise  # Las excepciones serán manejadas en el route
+            raise
 
     @staticmethod
     def actualizar_estado_tarjeta(tarjeta_id, monto_pagado):
@@ -307,10 +551,73 @@ class TarjetaCreditoController:
         if monto_pagado <= Decimal('0'):
             raise ValueError("Monto de pago inválido")
 
-        tarjeta.monto -= monto_pagado
-        tarjeta.pagada = tarjeta.monto <= Decimal('0')
+        # Recalcular ciclo actual primero
+        tarjeta.calcular_ciclo_actual()
         
-        if tarjeta.pagada:
-            tarjeta.monto = Decimal('0')
+        # Aplicar pago al saldo del periodo anterior primero
+        if tarjeta.saldo_periodo_anterior > Decimal('0'):
+            if monto_pagado >= tarjeta.saldo_periodo_anterior:
+                # Pago cubre toda la deuda del periodo anterior
+                exceso = monto_pagado - tarjeta.saldo_periodo_anterior
+                tarjeta.saldo_periodo_anterior = Decimal('0')
+                tarjeta.pagada = True
+                
+                # Si hay exceso, aplicar al periodo actual
+                if exceso > Decimal('0') and tarjeta.saldo_periodo_actual > Decimal('0'):
+                    tarjeta.saldo_periodo_actual = max(Decimal('0'), 
+                                                     tarjeta.saldo_periodo_actual - exceso)
+            else:
+                # Pago parcial del periodo anterior
+                tarjeta.saldo_periodo_anterior -= monto_pagado
+                tarjeta.pagada = False
+        else:
+            # No hay deuda del periodo anterior, aplicar al actual
+            tarjeta.saldo_periodo_actual = max(Decimal('0'), 
+                                             tarjeta.saldo_periodo_actual - monto_pagado)
+            tarjeta.pagada = True  # El periodo cortado está pagado
+        
+        # Actualizar monto total
+        tarjeta.monto = tarjeta.saldo_periodo_anterior + tarjeta.saldo_periodo_actual
         
         db.session.commit()
+
+    @staticmethod
+    def procesar_corte_mensual():
+        """Procesa el corte mensual - se ejecuta automáticamente"""
+        from datetime import date
+        
+        hoy = date.today()
+        tarjetas = Deuda.query.filter_by(fecha_corte=hoy.day).all()
+        
+        for tarjeta in tarjetas:
+            # Mover el saldo actual al periodo anterior (nuevo corte)
+            tarjeta.saldo_periodo_anterior = tarjeta.saldo_periodo_actual
+            tarjeta.saldo_periodo_actual = Decimal('0')
+            
+            # Ahora HAY nueva deuda cortada, por lo tanto no está pagada
+            tarjeta.pagada = tarjeta.saldo_periodo_anterior <= Decimal('0')
+            
+            # Actualizar monto total y ciclo
+            tarjeta.monto = tarjeta.saldo_periodo_anterior + tarjeta.saldo_periodo_actual
+            tarjeta.calcular_ciclo_actual()
+            
+        db.session.commit()
+        return len(tarjetas)
+
+# Función para el scheduler (debe ser llamada desde app.py o __init__.py)
+def setup_scheduler_jobs():
+    """Esta función debe ser llamada desde donde se inicializa el scheduler"""
+    from app import app, scheduler
+    
+    def procesar_cortes_automatico():
+        with app.app_context():
+            TarjetaCreditoController.procesar_corte_mensual()
+            app.logger.info("Cortes de tarjetas procesados")
+
+    # Agregar nueva tarea al scheduler
+    scheduler.add_job(
+        func=procesar_cortes_automatico,
+        trigger='cron',
+        hour=0,  # Ejecutar a medianoche
+        minute=1
+    )
