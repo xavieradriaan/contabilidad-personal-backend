@@ -604,6 +604,29 @@ class TarjetaCreditoController:
         db.session.commit()
         return len(tarjetas)
 
+    @staticmethod
+    def delete_tarjeta(tarjeta_id, user_id):
+        """Elimina una tarjeta de crédito del usuario"""
+        try:
+            tarjeta = Deuda.query.filter_by(id=tarjeta_id, user_id=user_id).first()
+            
+            if not tarjeta:
+                raise ValueError("Tarjeta no encontrada")
+            
+            # Verificar que no tenga saldos pendientes
+            if tarjeta.saldo_periodo_anterior > 0 or tarjeta.saldo_periodo_actual > 0:
+                raise ValueError("No se puede eliminar una tarjeta con saldo pendiente")
+            
+            # Eliminar la tarjeta
+            db.session.delete(tarjeta)
+            db.session.commit()
+            
+            return True
+            
+        except Exception as e:
+            db.session.rollback()
+            raise Exception(f"Error al eliminar tarjeta: {str(e)}")
+
 # Función para el scheduler (debe ser llamada desde app.py o __init__.py)
 def setup_scheduler_jobs():
     """Esta función debe ser llamada desde donde se inicializa el scheduler"""

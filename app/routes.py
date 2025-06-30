@@ -629,6 +629,56 @@ def add_tarjeta_credito():
     
     return jsonify(nueva_tarjeta.to_dict()), 201
 
+@app.route('/tarjetas_credito/<int:tarjeta_id>', methods=['DELETE'])
+@jwt_required()
+def delete_tarjeta_credito(tarjeta_id):
+    try:
+        current_user = get_jwt_identity()
+        
+        # Verificar que la tarjeta existe y pertenece al usuario
+        from app.models import Deuda
+        tarjeta = Deuda.query.filter_by(id=tarjeta_id, user_id=current_user).first()
+        
+        if not tarjeta:
+            return jsonify({
+                'success': False, 
+                'message': 'Tarjeta no encontrada o no tienes permisos para eliminarla'
+            }), 404
+        
+        # Verificar si la tarjeta tiene saldos pendientes
+        if tarjeta.saldo_periodo_anterior > 0 or tarjeta.saldo_periodo_actual > 0:
+            return jsonify({
+                'success': False, 
+                'message': 'No se puede eliminar una tarjeta con saldo pendiente'
+            }), 400
+        
+        # Eliminar la tarjeta de pagos recurrentes si existe
+        from app.models import PagoRecurrente
+        pago_recurrente = PagoRecurrente.query.filter_by(
+            user_id=current_user, 
+            categoria=tarjeta.tarjeta_nombre
+        ).first()
+        
+        if pago_recurrente:
+            db.session.delete(pago_recurrente)
+        
+        # Eliminar la tarjeta
+        db.session.delete(tarjeta)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Tarjeta eliminada correctamente'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error al eliminar tarjeta {tarjeta_id}: {str(e)}")
+        return jsonify({
+            'success': False, 
+            'message': 'Error interno del servidor'
+        }), 500
+
 @app.route('/api/tarjetas_con_ciclo')
 @jwt_required()
 def api_tarjetas_con_ciclo():
