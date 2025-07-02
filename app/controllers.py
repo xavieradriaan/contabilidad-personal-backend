@@ -199,7 +199,6 @@ class PagoRecurrenteController:
         db.session.commit()
           
 # Controlador para manejar el saldo disponible
-# Controlador para manejar el saldo disponible
 class TotalController:
     @staticmethod
     def get_saldo_disponible(user_id, year, month):
@@ -284,22 +283,28 @@ class TotalController:
         tarjetas_vencidas = len([t for t in tarjetas_info if t['estado_ciclo'] == 'vencida'])
         tarjetas_por_pagar = len([t for t in tarjetas_info if t['estado_ciclo'] == 'por_pagar'])
         
-        # Calcular próximos vencimientos (próximos 7 días)
+        # Calcular próximos vencimientos (próximos 7 días, excluyendo vencidas)
         from datetime import date, timedelta
         proximos_vencimientos = []
-        fecha_limite = date.today() + timedelta(days=7)
+        hoy = date.today()
+        fecha_limite = hoy + timedelta(days=7)
         
         for item in tarjetas_info:
             tarjeta_data = item['tarjeta']
             if (tarjeta_data.get('fecha_vencimiento') and 
-                date.fromisoformat(tarjeta_data['fecha_vencimiento']) <= fecha_limite and 
                 item['saldo_a_pagar'] > 0):
-                proximos_vencimientos.append({
-                    'nombre': tarjeta_data['tarjeta_nombre'],
-                    'monto': item['saldo_a_pagar'],
-                    'dias': item['dias_para_vencimiento'],
-                    'fecha_vencimiento': tarjeta_data['fecha_vencimiento']
-                })
+                fecha_vencimiento = date.fromisoformat(tarjeta_data['fecha_vencimiento'])
+                
+                # Solo incluir tarjetas que vencen HOY o en los próximos 7 días
+                # Excluir tarjetas ya vencidas (fechas pasadas)
+                if hoy <= fecha_vencimiento <= fecha_limite:
+                    dias_hasta_vencimiento = (fecha_vencimiento - hoy).days
+                    proximos_vencimientos.append({
+                        'nombre': tarjeta_data['tarjeta_nombre'],
+                        'monto': item['saldo_a_pagar'],
+                        'dias': dias_hasta_vencimiento,
+                        'fecha_vencimiento': tarjeta_data['fecha_vencimiento']
+                    })
         
         return {
             # Dinero real disponible
@@ -363,7 +368,14 @@ class TarjetaCreditoController:
         resultado = []
         
         for tarjeta in tarjetas:
+            # ✅ PRESERVAR la fecha_vencimiento original de la BD antes de recalcular
+            fecha_vencimiento_original = tarjeta.fecha_vencimiento
+            
             tarjeta.calcular_ciclo_actual()  # Recalcular ciclo
+            
+            # ✅ RESTAURAR la fecha_vencimiento original si existía
+            if fecha_vencimiento_original:
+                tarjeta.fecha_vencimiento = fecha_vencimiento_original
             
             # ✅ CORRECCIÓN: Usar el valor ya guardado en lugar de calcular dinámicamente
             consumos_periodo = float(tarjeta.saldo_periodo_actual or 0)
@@ -376,81 +388,197 @@ class TarjetaCreditoController:
                 Egreso.fecha >= tarjeta.ciclo_actual_inicio
             ).scalar() or 0
             
-            # NUEVA LÓGICA DE ESTADO CORREGIDA
+            # ✅ NUEVA LÓGICA: USAR fecha_vencimiento DE LA BD CUANDO ESTÉ DISPONIBLE
             from datetime import date
             hoy = date.today()
             
-            # Calcular el día de corte y pago del mes actual
-            try:
-                corte_mes_actual = date(hoy.year, hoy.month, tarjeta.fecha_corte)
-            except ValueError:
-                from calendar import monthrange
-                ultimo_dia = monthrange(hoy.year, hoy.month)[1]
-                corte_mes_actual = date(hoy.year, hoy.month, min(tarjeta.fecha_corte, ultimo_dia))
-            
-            # Calcular fecha de pago
-            if tarjeta.fecha_pago < tarjeta.fecha_corte:
-                # Pago es el siguiente mes
-                if corte_mes_actual.month == 12:
-                    año_pago = corte_mes_actual.year + 1
-                    mes_pago = 1
-                else:
-                    año_pago = corte_mes_actual.year
-                    mes_pago = corte_mes_actual.month + 1
+            # Si hay fecha_vencimiento en la BD, usarla directamente
+            if tarjeta.fecha_vencimiento:
+                fecha_vencimiento_real = tarjeta.fecha_vencimiento
+                dias_hasta_vencimiento = (fecha_vencimiento_real - hoy).days
                 
+                # Determinar estado basado en la fecha de vencimiento real
+                saldo_anterior = float(tarjeta.saldo_periodo_anterior or 0)
+                
+                if saldo_anterior > 0 and not tarjeta.pagada:
+                    if hoy > fecha_vencimiento_real:
+                        estado_ciclo = "vencida"
+                        dias_para_vencimiento = 0
+                    else:
+                        estado_ciclo = "por_pagar"
+                        dias_para_vencimiento = max(0, dias_hasta_vencimiento)
+                else:
+                    # No hay deuda cortada pendiente - verificar consumos actuales
+                    if consumos_periodo > 0:
+                        estado_ciclo = "en_curso"  # Hay consumos del período actual
+                    else:
+                        estado_ciclo = "al_dia"    # Sin consumos
+                    dias_para_vencimiento = max(0, dias_hasta_vencimiento)
+                
+                dias_para_corte = 0  # No relevante cuando hay fecha específica
+                
+            else:
+                # LÓGICA ORIGINAL PARA TARJETAS SIN fecha_vencimiento ESPECÍFICA
+                # Calcular el día de corte y pago del mes actual
                 try:
-                    fecha_pago_mes = date(año_pago, mes_pago, tarjeta.fecha_pago)
+                    corte_mes_actual = date(hoy.year, hoy.month, tarjeta.fecha_corte)
                 except ValueError:
                     from calendar import monthrange
-                    ultimo_dia_pago = monthrange(año_pago, mes_pago)[1]
-                    fecha_pago_mes = date(año_pago, mes_pago, min(tarjeta.fecha_pago, ultimo_dia_pago))
-            else:
-                # Pago es el mismo mes
+                    ultimo_dia = monthrange(hoy.year, hoy.month)[1]
+                    corte_mes_actual = date(hoy.year, hoy.month, min(tarjeta.fecha_corte, ultimo_dia))
+                
+                # Calcular fecha de pago - LÓGICA CORREGIDA
+                if tarjeta.fecha_pago < tarjeta.fecha_corte:
+                    # Verificar PRIMERO si la fecha de pago de este mes ya pasó
+                    try:
+                        fecha_pago_este_mes = date(hoy.year, hoy.month, tarjeta.fecha_pago)
+                        if hoy <= fecha_pago_este_mes:
+                            # El vencimiento es ESTE mes (aún no ha pasado)
+                            fecha_pago_mes = fecha_pago_este_mes
+                        else:
+                            # Ya venció este mes, el próximo vencimiento es el siguiente mes
+                            if hoy.month == 12:
+                                año_pago = hoy.year + 1
+                                mes_pago = 1
+                            else:
+                                año_pago = hoy.year
+                                mes_pago = hoy.month + 1
+                            
+                            try:
+                                fecha_pago_mes = date(año_pago, mes_pago, tarjeta.fecha_pago)
+                            except ValueError:
+                                from calendar import monthrange
+                                ultimo_dia_pago = monthrange(año_pago, mes_pago)[1]
+                                fecha_pago_mes = date(año_pago, mes_pago, min(tarjeta.fecha_pago, ultimo_dia_pago))
+                    except ValueError:
+                        # Si no se puede crear la fecha de este mes, usar el siguiente mes
+                        if hoy.month == 12:
+                            año_pago = hoy.year + 1
+                            mes_pago = 1
+                        else:
+                            año_pago = hoy.year
+                            mes_pago = hoy.month + 1
+                        
+                        try:
+                            fecha_pago_mes = date(año_pago, mes_pago, tarjeta.fecha_pago)
+                        except ValueError:
+                            from calendar import monthrange
+                            ultimo_dia_pago = monthrange(año_pago, mes_pago)[1]
+                            fecha_pago_mes = date(año_pago, mes_pago, min(tarjeta.fecha_pago, ultimo_dia_pago))
+                else:
+                    # Pago es el mismo mes que el corte
+                    try:
+                        fecha_pago_mes = date(hoy.year, hoy.month, tarjeta.fecha_pago)
+                        # Si ya pasó la fecha de pago este mes, calcular para el siguiente mes
+                        if hoy > fecha_pago_mes:
+                            if hoy.month == 12:
+                                año_pago = hoy.year + 1
+                                mes_pago = 1
+                            else:
+                                año_pago = hoy.year
+                                mes_pago = hoy.month + 1
+                            
+                            try:
+                                fecha_pago_mes = date(año_pago, mes_pago, tarjeta.fecha_pago)
+                            except ValueError:
+                                from calendar import monthrange
+                                ultimo_dia_pago = monthrange(año_pago, mes_pago)[1]
+                                fecha_pago_mes = date(año_pago, mes_pago, min(tarjeta.fecha_pago, ultimo_dia_pago))
+                    except ValueError:
+                        from calendar import monthrange
+                        ultimo_dia_pago = monthrange(hoy.year, hoy.month)[1]
+                        fecha_pago_mes = date(hoy.year, hoy.month, min(tarjeta.fecha_pago, ultimo_dia_pago))
+                
+                # Calcular la fecha de pago del mes pasado
+                if hoy.month == 1:
+                    mes_anterior = 12
+                    año_anterior = hoy.year - 1
+                else:
+                    mes_anterior = hoy.month - 1
+                    año_anterior = hoy.year
+                    
                 try:
-                    fecha_pago_mes = date(hoy.year, hoy.month, tarjeta.fecha_pago)
+                    fecha_pago_mes_anterior = date(año_anterior, mes_anterior, tarjeta.fecha_pago)
                 except ValueError:
                     from calendar import monthrange
-                    ultimo_dia_pago = monthrange(hoy.year, hoy.month)[1]
-                    fecha_pago_mes = date(hoy.year, hoy.month, min(tarjeta.fecha_pago, ultimo_dia_pago))
-            
-            # DETERMINAR ESTADO REAL (LÓGICA COMPLETAMENTE CORREGIDA)
-            saldo_anterior = float(tarjeta.saldo_periodo_anterior or 0)
-            
-            if saldo_anterior <= 0 and tarjeta.pagada:
-                # NO hay deuda cortada pendiente, determinar por ciclo actual
-                if hoy < corte_mes_actual:
-                    estado_ciclo = "en_curso"
-                    dias_para_corte = (corte_mes_actual - hoy).days
-                    dias_para_vencimiento = (fecha_pago_mes - hoy).days
+                    ultimo_dia_anterior = monthrange(año_anterior, mes_anterior)[1]
+                    fecha_pago_mes_anterior = date(año_anterior, mes_anterior, min(tarjeta.fecha_pago, ultimo_dia_anterior))
+
+                # Calcular la fecha de pago actual/próxima
+                try:
+                    fecha_pago_este_mes = date(hoy.year, hoy.month, tarjeta.fecha_pago)
+                    if hoy <= fecha_pago_este_mes:
+                        fecha_pago_relevante = fecha_pago_este_mes
+                    else:
+                        # Ya pasó este mes, calcular el siguiente
+                        if hoy.month == 12:
+                            fecha_pago_relevante = date(hoy.year + 1, 1, tarjeta.fecha_pago)
+                        else:
+                            try:
+                                fecha_pago_relevante = date(hoy.year, hoy.month + 1, tarjeta.fecha_pago)
+                            except ValueError:
+                                from calendar import monthrange
+                                ultimo_dia_siguiente = monthrange(hoy.year, hoy.month + 1)[1]
+                                fecha_pago_relevante = date(hoy.year, hoy.month + 1, min(tarjeta.fecha_pago, ultimo_dia_siguiente))
+                except ValueError:
+                    # Si no se puede crear la fecha de este mes, usar el siguiente
+                    if hoy.month == 12:
+                        fecha_pago_relevante = date(hoy.year + 1, 1, tarjeta.fecha_pago)
+                    else:
+                        try:
+                            fecha_pago_relevante = date(hoy.year, hoy.month + 1, tarjeta.fecha_pago)
+                        except ValueError:
+                            from calendar import monthrange
+                            ultimo_dia_siguiente = monthrange(hoy.year, hoy.month + 1)[1]
+                            fecha_pago_relevante = date(hoy.year, hoy.month + 1, min(tarjeta.fecha_pago, ultimo_dia_siguiente))
+
+                # DETERMINAR ESTADO CON LÓGICA CORREGIDA
+                saldo_anterior = float(tarjeta.saldo_periodo_anterior or 0)
+
+                # CASO CRÍTICO: Si hay saldo anterior y no está pagada, verificar si está vencida
+                if saldo_anterior > 0 and not tarjeta.pagada:
+                    # Verificar si la fecha de pago ya pasó
+                    if hoy > fecha_pago_mes_anterior:
+                        # VENCIDA: La fecha de pago del período cortado ya pasó
+                        estado_ciclo = "vencida"
+                        dias_para_corte = 0
+                        dias_para_vencimiento = 0
+                    else:
+                        # Aún no vence
+                        estado_ciclo = "por_pagar"
+                        dias_para_corte = 0
+                        dias_para_vencimiento = (fecha_pago_mes_anterior - hoy).days
+                elif saldo_anterior <= 0 and tarjeta.pagada:
+                    # NO hay deuda cortada pendiente
+                    consumos_actuales = float(tarjeta.saldo_periodo_actual or 0)
+                    
+                    if hoy < corte_mes_actual:
+                        # Antes del corte
+                        if consumos_actuales > 0:
+                            estado_ciclo = "en_curso"  # Hay consumos del período actual
+                        else:
+                            estado_ciclo = "al_dia"    # Sin consumos
+                        dias_para_corte = (corte_mes_actual - hoy).days
+                        dias_para_vencimiento = (fecha_pago_relevante - hoy).days
+                    else:
+                        # Después del corte
+                        estado_ciclo = "al_dia"
+                        dias_para_corte = 0
+                        dias_para_vencimiento = (fecha_pago_relevante - hoy).days if hoy <= fecha_pago_relevante else 0
                 else:
-                    # Ya pasó el corte, pero no hay deuda anterior = está al día
-                    estado_ciclo = "al_dia"
-                    dias_para_corte = 0
-                    dias_para_vencimiento = (fecha_pago_mes - hoy).days if hoy <= fecha_pago_mes else 0
-            elif saldo_anterior > 0 and not tarjeta.pagada:
-                # HAY deuda cortada sin pagar
-                if hoy <= fecha_pago_mes:
-                    estado_ciclo = "por_pagar"
-                    dias_para_corte = 0
-                    dias_para_vencimiento = (fecha_pago_mes - hoy).days
-                else:
-                    estado_ciclo = "vencida"
-                    dias_para_corte = 0
-                    dias_para_vencimiento = 0
-            else:
-                # Casos especiales - usar fechas como fallback
-                if hoy < corte_mes_actual:
-                    estado_ciclo = "en_curso"
-                    dias_para_corte = (corte_mes_actual - hoy).days
-                    dias_para_vencimiento = (fecha_pago_mes - hoy).days
-                elif hoy <= fecha_pago_mes:
-                    estado_ciclo = "por_pagar"
-                    dias_para_corte = 0
-                    dias_para_vencimiento = (fecha_pago_mes - hoy).days
-                else:
-                    estado_ciclo = "vencida"
-                    dias_para_corte = 0
-                    dias_para_vencimiento = 0
+                    # Casos especiales - usar fechas como fallback
+                    if hoy < corte_mes_actual:
+                        estado_ciclo = "en_curso"
+                        dias_para_corte = (corte_mes_actual - hoy).days
+                        dias_para_vencimiento = (fecha_pago_relevante - hoy).days
+                    elif saldo_anterior > 0 and hoy > fecha_pago_mes_anterior:
+                        estado_ciclo = "vencida"
+                        dias_para_corte = 0
+                        dias_para_vencimiento = 0
+                    else:
+                        estado_ciclo = "por_pagar"
+                        dias_para_corte = 0
+                        dias_para_vencimiento = max(0, (fecha_pago_relevante - hoy).days)
             
             # CALCULAR SALDO TOTAL A PAGAR CORRECTAMENTE
             saldo_total = float(tarjeta.saldo_periodo_anterior or 0) + consumos_periodo
@@ -476,41 +604,101 @@ class TarjetaCreditoController:
 
     @staticmethod
     def add_tarjeta(user_id, tarjeta_nombre, fecha_corte, fecha_pago, subcategoria=None):
-        from datetime import datetime
+        """
+        Crea una nueva tarjeta de crédito que SIEMPRE empieza limpia (sin deuda).
+        La fecha de vencimiento se calcula automáticamente para el próximo ciclo.
+        
+        Esta lógica funciona para CUALQUIER configuración de tarjeta:
+        - Corte antes que pago (corte 15, pago 20)
+        - Corte después que pago (corte 20, pago 15)
+        - Corte igual que pago (corte 15, pago 15)
+        - Días que no existen en algunos meses (31)
+        """
+        from datetime import datetime, date
+        from calendar import monthrange
         
         # Extraer el día de la fecha si viene como string de fecha completa
         if isinstance(fecha_corte, str):
-            if '-' in fecha_corte:  # Formato de fecha completa (YYYY-MM-DD)
+            if '-' in fecha_corte:
                 fecha_corte_obj = datetime.strptime(fecha_corte, '%Y-%m-%d')
                 dia_corte = fecha_corte_obj.day
-            else:  # Ya es solo el día
+            else:
                 dia_corte = int(fecha_corte)
         else:
             dia_corte = int(fecha_corte)
             
         if isinstance(fecha_pago, str):
-            if '-' in fecha_pago:  # Formato de fecha completa (YYYY-MM-DD)
+            if '-' in fecha_pago:
                 fecha_pago_obj = datetime.strptime(fecha_pago, '%Y-%m-%d')
                 dia_pago = fecha_pago_obj.day
-            else:  # Ya es solo el día
+            else:
                 dia_pago = int(fecha_pago)
         else:
             dia_pago = int(fecha_pago)
         
+        # LÓGICA UNIVERSAL: Calcular el próximo vencimiento basado en el ciclo natural
+        hoy = date.today()
+        
+        # Paso 1: Determinar cuándo será el próximo corte
+        try:
+            corte_este_mes = date(hoy.year, hoy.month, dia_corte)
+        except ValueError:
+            # Manejar casos como día 31 en febrero
+            ultimo_dia_mes = monthrange(hoy.year, hoy.month)[1]
+            corte_este_mes = date(hoy.year, hoy.month, min(dia_corte, ultimo_dia_mes))
+        
+        # Paso 2: Determinar el período al que corresponde el próximo vencimiento
+        if hoy <= corte_este_mes:
+            # Aún no llega el corte de este mes, el vencimiento corresponde a este período
+            mes_corte = hoy.month
+            año_corte = hoy.year
+        else:
+            # Ya pasó el corte de este mes, el vencimiento es para el siguiente período
+            if hoy.month == 12:
+                mes_corte = 1
+                año_corte = hoy.year + 1
+            else:
+                mes_corte = hoy.month + 1
+                año_corte = hoy.year
+        
+        # Paso 3: Calcular fecha de vencimiento basada en el mes del corte
+        if dia_pago < dia_corte:
+            # El pago es el mes siguiente al corte
+            if mes_corte == 12:
+                mes_vencimiento = 1
+                año_vencimiento = año_corte + 1
+            else:
+                mes_vencimiento = mes_corte + 1
+                año_vencimiento = año_corte
+        else:
+            # El pago es el mismo mes del corte
+            mes_vencimiento = mes_corte
+            año_vencimiento = año_corte
+        
+        # Crear la fecha de vencimiento
+        try:
+            fecha_vencimiento = date(año_vencimiento, mes_vencimiento, dia_pago)
+        except ValueError:
+            # Manejar casos como día 31 en meses que no lo tienen
+            ultimo_dia_vencimiento = monthrange(año_vencimiento, mes_vencimiento)[1]
+            fecha_vencimiento = date(año_vencimiento, mes_vencimiento, min(dia_pago, ultimo_dia_vencimiento))
+        
+        # NUEVA TARJETA SIEMPRE EMPIEZA LIMPIA - Sin excepciones ni casos especiales
         nueva_tarjeta = Deuda(
             user_id=user_id,
             tarjeta_nombre=tarjeta_nombre,
-            fecha_corte=dia_corte,  # Usar el día extraído
-            fecha_pago=dia_pago,    # Usar el día extraído
-            monto=0,
-            pagada=True,  # Empezar como pagada (sin deuda cortada)
-            saldo_periodo_anterior=0,
-            saldo_periodo_actual=0
+            fecha_corte=dia_corte,
+            fecha_pago=dia_pago,
+            monto=0.0,                    # Sin deuda total
+            pagada=True,                  # Al día (sin deuda cortada)
+            saldo_periodo_anterior=0.0,   # Sin deuda del período anterior
+            saldo_periodo_actual=0.0,     # Sin consumos del período actual
+            fecha_vencimiento=fecha_vencimiento
         )
+        
         if subcategoria:
             nueva_tarjeta.subcategoria = subcategoria
         
-        nueva_tarjeta.calcular_ciclo_actual()
         db.session.add(nueva_tarjeta)
         db.session.commit()
         return nueva_tarjeta
