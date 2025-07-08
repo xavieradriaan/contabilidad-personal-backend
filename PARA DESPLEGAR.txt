@@ -112,9 +112,6 @@ psql -h junction.proxy.rlwy.net -U postgres -p 40186 -d railway
 y ver si aparecen los nuevos cambios en la bd
 
 
-
-----
-
 rm -rf migrations
 DROP TABLE IF EXISTS alembic_version;  (en la b.d)
 flask db init

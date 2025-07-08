@@ -9,6 +9,7 @@ from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask_migrate import Migrate
+from dotenv import load_dotenv
 import os
 from datetime import timedelta
 
@@ -27,14 +28,12 @@ jwt = JWTManager(app)
 CORS(app)  # Habilitar CORS para todas las rutas
 
 from app import routes
-from app.models import PagoRecurrente  # Importar el modelo PagoRecurrente
+from app.models import PagoRecurrente
+from app.controllers import PagoRecurrenteController, setup_scheduler_jobs
 
 def reset_pagos_recurrentes():
     with app.app_context():
-        pagos_recurrentes = PagoRecurrente.query.all()
-        for pago in pagos_recurrentes:
-            pago.pagado = False
-        db.session.commit()
+        PagoRecurrenteController.reset_pagos_recurrentes()
         app.logger.info("Pagos recurrentes restablecidos")
 
 scheduler = BackgroundScheduler()
@@ -46,6 +45,13 @@ scheduler.add_job(
     minute=59,
     second=59
 )
+
+# Configurar jobs del scheduler para tarjetas de crédito directamente
+try:
+    setup_scheduler_jobs()
+except Exception as e:
+    app.logger.warning(f"No se pudo configurar scheduler de tarjetas: {e}")
+
 scheduler.start()
 
 # Shut down the scheduler when exiting the app
