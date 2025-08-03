@@ -17,7 +17,27 @@ from app import app, api
 from app.controllers import TarjetaCreditoController
 from decimal import Decimal  # Importar Decimal para manejar valores monetarios
 from flask_bcrypt import generate_password_hash
+from functools import wraps
 
+def credentials_session_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(id=current_user).first()
+        
+        if not user:
+            return make_response(jsonify({"message": "Usuario no encontrado."}), 404)
+        
+        # Verificar si la sesión de credenciales es válida
+        if (not user.credentials_session_valid_until or 
+            user.credentials_session_valid_until < datetime.utcnow()):
+            return make_response(jsonify({
+                "message": "Acceso a credenciales requiere verificación.",
+                "requires_otp": True
+            }), 403)
+        
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Configurar la clave API de Mailjet
 MAILJET_API_KEY = "ba07f36f2dd4c3aa5a89811f3ca3a54e"
@@ -54,6 +74,38 @@ def send_otp(email, username):
     if result.status_code != 200:
         app.logger.error(f"Error sending email: {result.json()}")
         raise Exception("Error sending email")
+    return otp
+
+def send_credentials_otp(email, username):
+    otp = random.randint(100000, 999999)
+    data = {
+        'Messages': [
+            {
+                "From": {
+                    "Email": "contabilizateapp@hotmail.com",
+                    "Name": "Contabilízate App"
+                },
+                "To": [
+                    {
+                        "Email": email,
+                        "Name": username
+                    }
+                ],
+                "Subject": "Código de Acceso a Credenciales",
+                "HTMLPart": f"""
+                <p>Hola {username},</p>
+                <p>Has solicitado acceso a tus credenciales almacenadas en Contabilízate App.</p>
+                <p>Tu código de verificación es: <strong>{otp}</strong></p>
+                <p>Este código expira en 5 minutos por seguridad.</p>
+                <p>Si no has solicitado este acceso, ignora este correo.</p>
+                """
+            }
+        ]
+    }
+    result = mailjet.send.create(data=data)
+    if result.status_code != 200:
+        app.logger.error(f"Error sending credentials OTP email: {result.json()}")
+        raise Exception("Error sending credentials OTP email")
     return otp
 
 @app.route('/')
@@ -453,6 +505,7 @@ api.add_resource(DepositosBancosResource, '/depositos_bancos')
 
 class CredencialResource(Resource):
     @jwt_required()
+    @credentials_session_required
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -460,6 +513,7 @@ class CredencialResource(Resource):
         return jsonify([credencial.to_dict() for credencial in credenciales])
 
     @jwt_required()
+    @credentials_session_required
     def post(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -468,6 +522,7 @@ class CredencialResource(Resource):
         return jsonify(nueva_credencial.to_dict())
 
     @jwt_required()
+    @credentials_session_required
     def put(self):
         data = request.get_json()
         credencial_id = data.get('id')
@@ -504,12 +559,75 @@ class CredencialResource(Resource):
         }, 200
 
     @jwt_required()
+    @credentials_session_required
     def delete(self):
         data = request.get_json()
         credencial = CredencialController.delete_credencial(data['id'])
         return jsonify(credencial.to_dict())
 
 api.add_resource(CredencialResource, '/credenciales')
+
+class CredentialsOTPRequestResource(Resource):
+    @jwt_required()
+    def post(self):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(id=current_user).first()
+        
+        if not user:
+            return make_response(jsonify({"message": "Usuario no encontrado."}), 404)
+        
+        try:
+            otp = send_credentials_otp(user.email, user.username)
+            user.credentials_otp = str(otp)
+            user.credentials_otp_expiration = datetime.utcnow() + timedelta(minutes=5)
+            db.session.commit()
+            
+            return make_response(jsonify({
+                "message": "Código de verificación enviado a tu correo electrónico.",
+                "success": True
+            }), 200)
+        except Exception as e:
+            current_app.logger.error(f"Error sending credentials OTP: {str(e)}")
+            return make_response(jsonify({
+                "message": "Error al enviar el código de verificación.",
+                "success": False
+            }), 500)
+
+class CredentialsOTPVerifyResource(Resource):
+    @jwt_required()
+    def post(self):
+        current_user = get_jwt_identity()
+        user = User.query.filter_by(id=current_user).first()
+        data = request.get_json()
+        otp = data.get('otp')
+        
+        if not user:
+            return make_response(jsonify({"message": "Usuario no encontrado."}), 404)
+        
+        if not otp:
+            return make_response(jsonify({"message": "Código OTP es requerido."}), 400)
+        
+        if (user.credentials_otp != otp or 
+            not user.credentials_otp_expiration or 
+            user.credentials_otp_expiration < datetime.utcnow()):
+            return make_response(jsonify({
+                "message": "Código de verificación inválido o expirado.",
+                "success": False
+            }), 400)
+        
+        # Limpiar el OTP y establecer sesión válida por 10 minutos
+        user.credentials_otp = None
+        user.credentials_otp_expiration = None
+        user.credentials_session_valid_until = datetime.utcnow() + timedelta(minutes=10)
+        db.session.commit()
+        
+        return make_response(jsonify({
+            "message": "Código verificado correctamente. Acceso concedido por 10 minutos.",
+            "success": True
+        }), 200)
+
+api.add_resource(CredentialsOTPRequestResource, '/credentials/request-otp')
+api.add_resource(CredentialsOTPVerifyResource, '/credentials/verify-otp')
     
 class CheckIngresosResource(Resource):
     @jwt_required()

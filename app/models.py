@@ -11,6 +11,11 @@ class User(UserMixin, db.Model):
     failed_attempts = db.Column(db.Integer, default=0)
     otp = db.Column(db.String(6), nullable=True)  # Campo para almacenar el OTP
     otp_expiration = db.Column(db.DateTime, nullable=True)  # Campo para almacenar la fecha de expiración del OTP
+    
+    # Campos para verificación de acceso a credenciales
+    credentials_otp = db.Column(db.String(6), nullable=True)  # OTP para acceso a credenciales
+    credentials_otp_expiration = db.Column(db.DateTime, nullable=True)  # Expiración del OTP de credenciales
+    credentials_session_valid_until = db.Column(db.DateTime, nullable=True)  # Sesión válida hasta esta fecha
 
     def to_dict(self):
         return {
