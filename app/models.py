@@ -16,6 +16,11 @@ class User(UserMixin, db.Model):
     credentials_otp = db.Column(db.String(6), nullable=True)  # OTP para acceso a credenciales
     credentials_otp_expiration = db.Column(db.DateTime, nullable=True)  # Expiración del OTP de credenciales
     credentials_session_valid_until = db.Column(db.DateTime, nullable=True)  # Sesión válida hasta esta fecha
+    
+    # Campos para manejo de sesiones únicas
+    active_session_token = db.Column(db.Text, nullable=True)  # Token de la sesión activa
+    session_device_info = db.Column(db.String(500), nullable=True)  # Información del dispositivo
+    last_login_at = db.Column(db.DateTime, nullable=True)  # Último inicio de sesión
 
     def to_dict(self):
         return {

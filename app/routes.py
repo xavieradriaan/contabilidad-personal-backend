@@ -19,6 +19,36 @@ from decimal import Decimal  # Importar Decimal para manejar valores monetarios
 from flask_bcrypt import generate_password_hash
 from functools import wraps
 
+def validate_active_session(f):
+    """
+    Decorator para validar que la sesión actual sea la única activa
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+        
+        if not user:
+            return make_response(jsonify({
+                "message": "Usuario no encontrado.",
+                "session_expired": True
+            }), 401)
+        
+        # Obtener el token actual del header Authorization
+        auth_header = request.headers.get('Authorization', '')
+        current_token = auth_header.replace('Bearer ', '') if auth_header.startswith('Bearer ') else ''
+        
+        # Verificar si el token actual coincide con el token de sesión activa
+        if not user.active_session_token or user.active_session_token != current_token:
+            return make_response(jsonify({
+                "message": "Tu sesión ha sido cerrada debido a un nuevo inicio de sesión desde otro dispositivo.",
+                "session_expired": True,
+                "reason": "session_replaced"
+            }), 401)
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
 def credentials_session_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -229,6 +259,7 @@ api.add_resource(PasswordResetResource, '/password_reset')
 
 class IngresoResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -236,6 +267,7 @@ class IngresoResource(Resource):
         return jsonify([ingreso.to_dict() for ingreso in ingresos])
 
     @jwt_required()
+    @validate_active_session
     def post(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -416,10 +448,25 @@ class LoginResource(Resource):
             }), 403)  # Cambiar el mensaje y agregar URL
 
         if user and bcrypt.check_password_hash(user.password, data['password']):
+            # Guardar información de la sesión anterior para notificación
+            had_previous_session = user.active_session_token is not None
+            
+            # Crear nuevo token de acceso
+            new_access_token = create_access_token(identity=user.id)
+            
+            # Actualizar información de sesión
             user.failed_attempts = 0
+            user.active_session_token = new_access_token
+            user.session_device_info = request.headers.get('User-Agent', 'Dispositivo desconocido')[:500]
+            user.last_login_at = datetime.utcnow()
+            
             db.session.commit()
-            access_token = create_access_token(identity=user.id)  # Cambiado a usar user.id como identity
-            return jsonify(access_token=access_token)
+            
+            return jsonify({
+                'access_token': new_access_token,
+                'session_replaced': had_previous_session,
+                'message': 'Inicio de sesión exitoso' + (' - Sesión anterior cerrada' if had_previous_session else '')
+            })
         else:
             user.failed_attempts += 1
             db.session.commit()
@@ -628,6 +675,55 @@ class CredentialsOTPVerifyResource(Resource):
 
 api.add_resource(CredentialsOTPRequestResource, '/credentials/request-otp')
 api.add_resource(CredentialsOTPVerifyResource, '/credentials/verify-otp')
+
+class SessionCheckResource(Resource):
+    @jwt_required()
+    def get(self):
+        """
+        Endpoint para verificar si la sesión actual es válida
+        """
+        try:
+            current_user_id = get_jwt_identity()
+            user = User.query.get(current_user_id)
+            
+            if not user:
+                return make_response(jsonify({
+                    'valid': False,
+                    'message': 'Usuario no encontrado',
+                    'session_expired': True
+                }), 401)
+            
+            # Obtener el token actual
+            auth_header = request.headers.get('Authorization', '')
+            current_token = auth_header.replace('Bearer ', '') if auth_header.startswith('Bearer ') else ''
+            
+            # Verificar si el token actual coincide con el token activo
+            is_valid = (user.active_session_token and 
+                       user.active_session_token == current_token)
+            
+            if is_valid:
+                return jsonify({
+                    'valid': True,
+                    'message': 'Sesión válida',
+                    'last_login': user.last_login_at.isoformat() if user.last_login_at else None,
+                    'device_info': user.session_device_info
+                })
+            else:
+                return make_response(jsonify({
+                    'valid': False,
+                    'message': 'Tu sesión ha sido cerrada debido a un nuevo inicio de sesión desde otro dispositivo',
+                    'session_expired': True,
+                    'reason': 'session_replaced'
+                }), 401)
+                
+        except Exception as e:
+            return make_response(jsonify({
+                'valid': False,
+                'message': 'Error al verificar sesión',
+                'session_expired': True
+            }), 500)
+
+api.add_resource(SessionCheckResource, '/check_session')
     
 class CheckIngresosResource(Resource):
     @jwt_required()
