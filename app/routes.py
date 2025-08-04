@@ -450,9 +450,16 @@ class LoginResource(Resource):
         if user and bcrypt.check_password_hash(user.password, data['password']):
             # Guardar información de la sesión anterior para notificación
             had_previous_session = user.active_session_token is not None
+            previous_token = user.active_session_token
             
             # Crear nuevo token de acceso
             new_access_token = create_access_token(identity=user.id)
+            
+            # DEBUG: Log para verificar
+            app.logger.info(f"Login - User: {user.username}")
+            app.logger.info(f"Previous session existed: {had_previous_session}")
+            app.logger.info(f"Previous token: {previous_token[:20] if previous_token else None}...")
+            app.logger.info(f"New token: {new_access_token[:20]}...")
             
             # Actualizar información de sesión
             user.failed_attempts = 0
@@ -465,7 +472,11 @@ class LoginResource(Resource):
             return jsonify({
                 'access_token': new_access_token,
                 'session_replaced': had_previous_session,
-                'message': 'Inicio de sesión exitoso' + (' - Sesión anterior cerrada' if had_previous_session else '')
+                'message': 'Inicio de sesión exitoso' + (' - Sesión anterior cerrada' if had_previous_session else ''),
+                'debug_info': {
+                    'had_previous': had_previous_session,
+                    'new_token_preview': new_access_token[:20] + '...'
+                }
             })
         else:
             user.failed_attempts += 1
@@ -697,6 +708,12 @@ class SessionCheckResource(Resource):
             auth_header = request.headers.get('Authorization', '')
             current_token = auth_header.replace('Bearer ', '') if auth_header.startswith('Bearer ') else ''
             
+            # DEBUG: Log información para debuggear
+            app.logger.info(f"Session check - User: {user.username}")
+            app.logger.info(f"Current token: {current_token[:20] if current_token else None}...")
+            app.logger.info(f"Stored token: {user.active_session_token[:20] if user.active_session_token else None}...")
+            app.logger.info(f"Tokens match: {user.active_session_token == current_token}")
+            
             # Verificar si el token actual coincide con el token activo
             is_valid = (user.active_session_token and 
                        user.active_session_token == current_token)
@@ -706,14 +723,23 @@ class SessionCheckResource(Resource):
                     'valid': True,
                     'message': 'Sesión válida',
                     'last_login': user.last_login_at.isoformat() if user.last_login_at else None,
-                    'device_info': user.session_device_info
+                    'device_info': user.session_device_info,
+                    'debug_info': {
+                        'token_preview': current_token[:20] + '...' if current_token else None,
+                        'stored_preview': user.active_session_token[:20] + '...' if user.active_session_token else None
+                    }
                 })
             else:
                 return make_response(jsonify({
                     'valid': False,
                     'message': 'Tu sesión ha sido cerrada debido a un nuevo inicio de sesión desde otro dispositivo',
                     'session_expired': True,
-                    'reason': 'session_replaced'
+                    'reason': 'session_replaced',
+                    'debug_info': {
+                        'current_token_preview': current_token[:20] + '...' if current_token else None,
+                        'stored_token_preview': user.active_session_token[:20] + '...' if user.active_session_token else None,
+                        'has_stored_token': user.active_session_token is not None
+                    }
                 }), 401)
                 
         except Exception as e:
