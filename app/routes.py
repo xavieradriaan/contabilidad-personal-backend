@@ -289,6 +289,7 @@ api.add_resource(IngresoResource, '/ingresos')
 
 class OtroIngresoResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -296,6 +297,7 @@ class OtroIngresoResource(Resource):
         return jsonify([otro_ingreso.to_dict() for otro_ingreso in otros_ingresos])
 
     @jwt_required()
+    @validate_active_session
     def post(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -313,6 +315,7 @@ api.add_resource(OtroIngresoResource, '/otros_ingresos')
 
 class EgresoResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -320,6 +323,7 @@ class EgresoResource(Resource):
         return jsonify([egreso.to_dict() for egreso in egresos])
 
     @jwt_required()
+    @validate_active_session
     def post(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -381,6 +385,7 @@ api.add_resource(EgresoResource, '/egresos')
 
 class CheckEgresosResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -391,6 +396,7 @@ api.add_resource(CheckEgresosResource, '/check_egresos')
 
 class TotalResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -491,6 +497,7 @@ api.add_resource(LoginResource, '/login')
 
 class UsersResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         users = User.query.all()
         return jsonify([user.to_dict() for user in users])
@@ -499,6 +506,7 @@ api.add_resource(UsersResource, '/users')
 
 class PagoRecurrenteResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -516,6 +524,7 @@ class PagoRecurrenteResource(Resource):
         return jsonify(pagos_recurrentes)
 
     @jwt_required()
+    @validate_active_session
     def post(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -528,6 +537,7 @@ api.add_resource(PagoRecurrenteResource, '/pagos_recurrentes')
 
 class DepositosBancosResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -753,6 +763,7 @@ api.add_resource(SessionCheckResource, '/check_session')
     
 class CheckIngresosResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -784,6 +795,7 @@ api.add_resource(CheckIngresosResource, '/check_ingresos')
 
 class CheckPagosRecurrentesResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -795,6 +807,7 @@ api.add_resource(CheckPagosRecurrentesResource, '/check_pagos_recurrentes')
 
 class RecordatoriosPagosRecurrentesResource(Resource):
     @jwt_required()
+    @validate_active_session
     def get(self):
         current_user = get_jwt_identity()
         user = User.query.filter_by(id=current_user).first()
@@ -840,6 +853,7 @@ def test_email():
 
 @app.route('/tarjetas_credito', methods=['GET'])
 @jwt_required()
+@validate_active_session
 def get_tarjetas_credito():
     current_user = get_jwt_identity()
     include_paid = request.args.get('include_paid', 'false').strip().lower() == 'true'  # Ensure proper handling of the parameter
@@ -850,6 +864,7 @@ from app.controllers import PagoRecurrenteController  # Ensure this import exist
 
 @app.route('/tarjetas_credito', methods=['POST'])
 @jwt_required()
+@validate_active_session
 def add_tarjeta_credito():
     current_user = get_jwt_identity()
     data = request.get_json()
@@ -871,6 +886,7 @@ def add_tarjeta_credito():
 
 @app.route('/tarjetas_credito/<int:tarjeta_id>', methods=['DELETE'])
 @jwt_required()
+@validate_active_session
 def delete_tarjeta_credito(tarjeta_id):
     try:
         current_user = get_jwt_identity()
@@ -921,6 +937,7 @@ def delete_tarjeta_credito(tarjeta_id):
 
 @app.route('/api/tarjetas_con_ciclo')
 @jwt_required()
+@validate_active_session
 def api_tarjetas_con_ciclo():
     try:
         current_user = get_jwt_identity()
@@ -934,6 +951,7 @@ def api_tarjetas_con_ciclo():
 
 @app.route('/api/dashboard_financiero')
 @jwt_required()
+@validate_active_session
 def api_dashboard_financiero():
     try:
         current_user = get_jwt_identity()
@@ -953,6 +971,7 @@ def api_dashboard_financiero():
 
 @app.route('/api/procesar_cortes')
 @jwt_required()
+@validate_active_session
 def procesar_cortes():
     try:
         tarjetas_procesadas = TarjetaCreditoController.procesar_corte_mensual()
